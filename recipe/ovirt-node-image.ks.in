@@ -2,14 +2,12 @@
 
 %include common-install.ks
 %include @DISTRO@-install.ks
-%include archipel-install.ks
 
 %include repos.ks
 
 %packages --excludedocs --nobase
 %include common-pkgs.ks
 %include @DISTRO@-pkgs.ks
-%include archipel-pkgs.ks
 
 %end
 
@@ -23,6 +21,7 @@
 
 %end
 
+@ARCHIPEL@
 @IMAGE_MINIMIZER@
 
 %include common-manifest.ks
