@@ -1,3 +1,4 @@
+samba-client
 python-setuptools
 archipel-agent
 archipel-agent-action-scheduler
