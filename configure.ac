@@ -18,6 +18,12 @@ AC_ARG_WITH([image-minimizer], [AC_HELP_STRING([--with-image-minimizer],
             [IMAGE_MINIMIZER=""])
 AC_SUBST([IMAGE_MINIMIZER])
 
+AC_ARG_WITH([archipel], [AC_HELP_STRING([--with-archipel],
+            [build ovirt node including Archipel])],
+            [ARCHIPEL="%include archipel.ks"],
+            [ARCHIPEL=""])
+AC_SUBST([ARCHIPEL])
+
 AC_CONFIG_FILES([Makefile
   dracut/Makefile
   images/Makefile
