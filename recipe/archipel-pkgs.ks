@@ -1,4 +1,5 @@
 samba-client
+cifs-utils
 python-setuptools
 archipel-agent
 archipel-agent-action-scheduler
