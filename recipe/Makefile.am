@@ -15,9 +15,9 @@
 # MA  02110-1301, USA.  A copy of the GNU General Public License is
 # also available at http://www.gnu.org/copyleft/gpl.html.
 
-PACKAGE           = @PACKAGE@
+PACKAGE           = @PACKAGE_NAME@
 RECIPE            = $(PACKAGE).ks
-PRODUCT           = @PRODUCT@
+PRODUCT           = @PRODUCT_NAME@
 PRODUCT_SHORT     ?= $(PRODUCT)
 PKG_FMT           = iso
 FEDORA            = @FEDORA@
