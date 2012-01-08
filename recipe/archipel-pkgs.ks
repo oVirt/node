@@ -1,3 +1,7 @@
+%include fedora-pkgs.ks
+matahari-network
+virt-manager-tui
+
 samba-client
 cifs-utils
 python-setuptools
