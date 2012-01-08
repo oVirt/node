@@ -15,9 +15,9 @@
 # MA  02110-1301, USA.  A copy of the GNU General Public License is
 # also available at http://www.gnu.org/copyleft/gpl.html.
 
-PACKAGE           = ovirt-node-image
+PACKAGE           = @PACKAGE@
 RECIPE            = $(PACKAGE).ks
-PRODUCT           = oVirt Node Hypervisor
+PRODUCT           = @PRODUCT@
 PRODUCT_SHORT     ?= $(PRODUCT)
 PKG_FMT           = iso
 FEDORA            = @FEDORA@
