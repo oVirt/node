@@ -4,8 +4,8 @@ AM_INIT_AUTOMAKE([-Wall -Werror foreign -Wno-portability tar-pax])
 AC_SUBST([FEDORA],[[`rpm --eval '%{fedora}'|sed 's/[^0-9]//g'`]])
 AC_SUBST([RHEL], [[`rpm --eval '%{rhel}'|sed 's/[^0-9]//g'`]])
 AC_SUBST([DISTRO])
-AC_SUBST([PACKAGE])
-AC_SUBST([PRODUCT])
+AC_SUBST([PACKAGE_NAME])
+AC_SUBST([PRODUCT_NAME])
 
 
 if test "$FEDORA"; then
@@ -23,18 +23,18 @@ AC_SUBST([IMAGE_MINIMIZER])
 
 AC_ARG_WITH([archipel], [AC_HELP_STRING([--with-archipel],
             [build ovirt node including Archipel])],
-            [ARCHIPEL="ARCHIPEL"],
-            [ARCHIPEL=""])
-AC_SUBST([ARCHIPEL])
+            [ARCHIPEL_FLAGS="--with-archipel"],
+            [ARCHIPEL_FLAGS=""])
+AC_SUBST([ARCHIPEL_FLAGS])
 
-if test $ARCHIPEL; then
-    PACKAGE=archipel-node-image
-    PRODUCT=Archipel\ Node\ Hypervisor
+if test $ARCHIPEL_FLAGS; then
+    PACKAGE_NAME=archipel-node-image
+    PRODUCT_NAME=Archipel\ Node\ Hypervisor
     MAIN_KS=recipe/archipel-node-image.ks
 
 else
-    PACKAGE=ovirt-node-image
-    PRODUCT=oVirt\ Node\ Hypervisor
+    PACKAGE_NAME=ovirt-node-image
+    PRODUCT_NAME=oVirt\ Node\ Hypervisor
     MAIN_KS=recipe/ovirt-node-image.ks
 fi
 
