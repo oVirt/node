@@ -84,7 +84,7 @@ however on a development machine to help to build the image.
 
 %build
 aclocal && autoheader && automake --add-missing && autoconf
-%configure --with-image-minimizer
+%configure --with-image-minimizer @ARCHIPEL_FLAGS@
 make
 
 %install
