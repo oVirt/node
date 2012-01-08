@@ -21,7 +21,6 @@
 
 %end
 
-@ARCHIPEL@
 @IMAGE_MINIMIZER@
 
 %include common-manifest.ks
