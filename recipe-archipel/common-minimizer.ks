@@ -1,1 +1,0 @@
-../recipe/common-minimizer.ks
