@@ -1,0 +1,1 @@
+../recipe/common-manifest.ks

@@ -20,19 +20,38 @@ AC_SUBST([IMAGE_MINIMIZER])
 
 AC_ARG_WITH([archipel], [AC_HELP_STRING([--with-archipel],
             [build ovirt node including Archipel])],
-            [ARCHIPEL="%include archipel.ks"],
+            [ARCHIPEL="ARCHIPEL"],
             [ARCHIPEL=""])
 AC_SUBST([ARCHIPEL])
 
-AC_CONFIG_FILES([Makefile
-  dracut/Makefile
-  images/Makefile
-  kinit/Makefile
-  scripts/Makefile
-  scripts/collectd.conf
-  recipe/Makefile
-  recipe/ovirt-node-image.ks
-  recipe/image-minimizer.ks
-  ovirt-node.spec
-  ])
-AC_OUTPUT
+echo $ARCHIPEL
+if test $ARCHIPEL; then
+    AC_CONFIG_FILES([Makefile
+      dracut/Makefile
+      images/Makefile
+      kinit/Makefile
+      scripts/Makefile
+      scripts/collectd.conf
+      recipe-archipel/Makefile
+      recipe-archipel/archipel-node-image.ks
+      recipe-archipel/image-minimizer.ks
+      ovirt-node.spec
+      ])
+    AC_OUTPUT   
+else
+    AC_CONFIG_FILES([Makefile
+      dracut/Makefile
+      images/Makefile
+      kinit/Makefile
+      scripts/Makefile
+      scripts/collectd.conf
+      recipe/Makefile
+      recipe/ovirt-node-image.ks
+      recipe/image-minimizer.ks
+      ovirt-node.spec
+      ])
+    AC_OUTPUT
+    
+fi
+
+
