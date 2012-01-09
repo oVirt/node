@@ -62,7 +62,7 @@ start_ovirt_firstboot ()
 
     is_auto_install
     auto_install=$?
-    if [ "$auto_install" = "0" -o "stateless" = "0" ]; then
+    if [ "$auto_install" = "0" -o "$stateless" = "0" ]; then
         /usr/libexec/ovirt-auto-install
         rc=$?
         # Handle Log file
