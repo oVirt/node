@@ -176,11 +176,9 @@ cat > /etc/archipel/archipel.conf <<EOF
 stateless_node = True
 EOF
 
-echo "[ARCHIPEL] Disabling the firstboot system"
-sed "/^    standalone=1/d" /etc/init.d/ovirt-early -i
-
-echo "[ARCHIPEL] Reconfiguring libvirt"
-sed "/# by vdsm/d" /etc/libvirt/libvirtd.conf  -i
+# @TODO: useless ?
+#echo "[ARCHIPEL] Reconfiguring libvirt"
+#sed "/# by vdsm/d" /etc/libvirt/libvirtd.conf  -i
 
 /sbin/service zfs-fuse stop 2>/dev/null
 
