@@ -15,45 +15,49 @@ sed -i -e "s/^[[:space:]]*#[[:space:]]*\(listen_tcp\)\>.*/\1 = 1/" \
    -e "s/^[[:space:]]*#[[:space:]]*\(listen_tls\)\>.*/\1 = 0/" \
    /etc/libvirt/libvirtd.conf
 
-#ovirt_setup_anyterm()
-   # configure anyterm
-   cat >> /etc/sysconfig/anyterm << \EOF_anyterm
-ANYTERM_CMD="sudo /usr/bin/virsh console %p"
-ANYTERM_LOCAL_ONLY=false
-EOF_anyterm
 
-   # permit it to run the virsh console
-   echo "anyterm ALL=NOPASSWD: /usr/bin/virsh console *" >> /etc/sudoers
+if [ -x "/etc/sysconfig/anyterm" ]; then
+    # configure anyterm
+    cat >> /etc/sysconfig/anyterm << \EOF_anyterm
+    ANYTERM_CMD="sudo /usr/bin/virsh console %p"
+    ANYTERM_LOCAL_ONLY=false
+    EOF_anyterm
 
-# systemd configuration
-# set default runlevel to multi-user(3)
+    # permit it to run the virsh console
+    echo "anyterm ALL=NOPASSWD: /usr/bin/virsh console *" >> /etc/sudoers
+fi
 
-rm -rf /etc/systemd/system/default.target
-ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+if [ -x "/lib/systemd/system/" ]; then
+    rm -rf /etc/systemd/system/default.target
+    ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
 
-# setup ovirt-firstboot multi-user dependency
-cat >> /lib/systemd/system/ovirt-firstboot.service << \EOF_firstboot
-[Unit]
-Description=firstboot configuration program (text mode)
-After=plymouth-quit.service
-Before=getty@tty1.service
+    # setup ovirt-firstboot multi-user dependency
+    cat >> /lib/systemd/system/ovirt-firstboot.service << \EOF_firstboot
+    [Unit]
+    Description=firstboot configuration program (text mode)
+    After=plymouth-quit.service
+    Before=getty@tty1.service
 
-[Service]
-Environment=RUNLEVEL=3
-ExecStartPre=-/bin/plymouth quit
-ExecStart=/etc/init.d/ovirt-firstboot start
-TimeoutSec=0
-RemainAfterExit=yes
-Type=oneshot
-SysVStartPriority=99
-StandardInput=tty-force
+    [Service]
+    Environment=RUNLEVEL=3
+    ExecStartPre=-/bin/plymouth quit
+    ExecStart=/etc/init.d/ovirt-firstboot start
+    TimeoutSec=0
+    RemainAfterExit=yes
+    Type=oneshot
+    SysVStartPriority=99
+    StandardInput=tty-force
 
-[Install]
-WantedBy=multi-user.target
-EOF_firstboot
+    [Install]
+    WantedBy=multi-user.target
+    EOF_firstboot
 
-systemctl enable ovirt-firstboot.service >/dev/null 2>&1
-chkconfig --del ovirt-firstboot
+    systemctl enable ovirt-firstboot.service >/dev/null 2>&1
+    chkconfig --del ovirt-firstboot
+else
+    sed -i "s/# chkconfig: 2345 99 01/# chkconfig: 2345 98 02/g" /etc/init.d/ovirt-firstboot
+    chkconfig --add ovirt-firstboot
+fi
 
 echo "Configuring IPTables"
 # here, we need to punch the appropriate holes in the firewall
