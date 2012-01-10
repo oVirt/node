@@ -14,3 +14,11 @@ anyterm
 glusterfs-client
 # F15 dracut missing dep, bz# ???
 less
+# host statistics rhbz#588852
+vhostmd
+matahari-network
+virt-manager-tui
+#VDSM
+vdsm-cli
+vdsm-reg
+

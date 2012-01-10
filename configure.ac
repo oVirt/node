@@ -27,6 +27,13 @@ AC_ARG_WITH([archipel], [AC_HELP_STRING([--with-archipel],
             [ARCHIPEL_FLAGS=""])
 AC_SUBST([ARCHIPEL_FLAGS])
 
+AC_ARG_WITH([centos], [AC_HELP_STRING([--with-centos],
+            [Use Centos5.6 repositories instead of Fedora])],
+            [CENTOS="1"],
+            [CENTOS=""])
+AC_SUBST([CENTOS])
+
+
 if test $ARCHIPEL_FLAGS; then
     PACKAGE_NAME=archipel-node-image
     PRODUCT_NAME=Archipel\ Node\ Hypervisor

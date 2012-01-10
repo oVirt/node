@@ -1,6 +1,4 @@
-%include fedora-pkgs.ks
-matahari-network
-virt-manager-tui
+%include centos-pkgs.ks
 
 samba-client
 cifs-utils
