@@ -84,14 +84,12 @@ repos.ks:
         FASTTRACK_REPO_LINE="repo --name=centos-fasttrack --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=fasttrack" ;\
         EXTRAS_REPO_LINE="repo --name=centos-extras --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=extras" ;\
         CENTOSPLUS_REPO_LINE="repo --name=centos-centosplus --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=centosplus" ;\
-		OVIRT_REPO_LINE="repo --name=ovirt-repo --baseurl=$(OVIRT_URL)/$(FEDORA)" ;\
         echo "$${CENTOS_REPO_LINE}" > repos.ks ;\
         echo "$${UPDATES_REPO_LINE}" >> repos.ks ;\
         echo "$${CONTRIB_REPO_LINE}" >> repos.ks ;\
         echo "$${FASTTRACK_REPO_LINE}" >> repos.ks ;\
         echo "$${EXTRAS_REPO_LINE}" >> repos.ks ;\
         echo "$${CENTOSPLUS_REPO_LINE}" >> repos.ks ;\
-        echo "$${OVIRT_REPO_LINE}" >> repos.ks ;\
       else \
     	if [ -n "$(FEDORA)" ]; then \
             OVIRT_STABLE_REPO_LINE="repo --name=ovirt-stable-repo --baseurl=$(OVIRT_URL)/$(FEDORA)\n" ;\

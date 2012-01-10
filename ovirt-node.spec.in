@@ -27,6 +27,7 @@ Requires:       glusterfs-client >= 2.0.1
 Requires:       anyterm
 Requires:       python-IPy
 Requires:       grub2
+Requires:       system-release
 %endif
 Requires:       libvirt >= 0.9.2
 Requires:       augeas >= 0.3.5
@@ -55,8 +56,14 @@ Requires:       dracut
 Requires:       grub
 # for applying patches in %post
 Requires:       patch
-%endif
 Requires:       system-release
+%endif
+%if 0%{?centos}
+Requires:       grub
+# for applying patches in %post
+Requires:       patch
+%endif
+
 
 BuildArch:      noarch
 
@@ -121,6 +128,12 @@ make install DESTDIR=%{buildroot}
 %{__install} -d -m0755 %{buildroot}%{_sysconfdir}/init
 %{__install} -p -m0644 libvirtd.upstart %{buildroot}%{_sysconfdir}/init/libvirtd.conf
 %endif
+%if 0%{?centos}
+# install libvirtd upstart job
+%{__install} -d -m0755 %{buildroot}%{_sysconfdir}/init
+%{__install} -p -m0644 libvirtd.upstart %{buildroot}%{_sysconfdir}/init/libvirtd.conf
+%endif
+
 # load vlan module
 %{__install} -d -m0755 %{buildroot}%{_sysconfdir}/sysconfig/modules
 %{__install} -p -m0755 vlan.modules %{buildroot}%{_sysconfdir}/sysconfig/modules
@@ -137,6 +150,11 @@ make install DESTDIR=%{buildroot}
 %{__install} -p -m0755 dracut/ovirt-cleanup.sh %{buildroot}%{_datadir}/dracut/modules.d/91ovirtnode
 %{__install} -p -m0644 dracut/ovirt-dracut.conf %{buildroot}%{_sysconfdir}/dracut.conf.d
 %if 0%{?rhel}
+# dracut patches for rhel6
+%{__install} -p -m0644 dracut/dracut-3d88d27810acc7782618d67a03ff5c0e41494ca4.patch %{buildroot}%{app_root}
+%{__install} -p -m0644 dracut/dracut-93724aa28fc20c8b7f0167201d1759b7118ba890.patch %{buildroot}%{app_root}
+%endif
+%if 0%{?centos}
 # dracut patches for rhel6
 %{__install} -p -m0644 dracut/dracut-3d88d27810acc7782618d67a03ff5c0e41494ca4.patch %{buildroot}%{app_root}
 %{__install} -p -m0644 dracut/dracut-93724aa28fc20c8b7f0167201d1759b7118ba890.patch %{buildroot}%{app_root}
@@ -259,6 +277,9 @@ fi
 %if 0%{?rhel}
 %{_sysconfdir}/init/libvirtd.conf
 %endif
+%if 0%{?centos}
+%{_sysconfdir}/init/libvirtd.conf
+%endif
 
 %{_sysconfdir}/sysconfig/modules/vlan.modules
 %{_sysconfdir}/modprobe.d/ovirt-qla4xxx.conf
@@ -269,6 +290,10 @@ fi
 # end i386 bits
 %{app_root}/syslinux-vesa-splash.jpg
 %if 0%{?rhel}
+%{app_root}/dracut-3d88d27810acc7782618d67a03ff5c0e41494ca4.patch
+%{app_root}/dracut-93724aa28fc20c8b7f0167201d1759b7118ba890.patch
+%endif
+%if 0%{?centos}
 %{app_root}/dracut-3d88d27810acc7782618d67a03ff5c0e41494ca4.patch
 %{app_root}/dracut-93724aa28fc20c8b7f0167201d1759b7118ba890.patch
 %endif

@@ -28,7 +28,6 @@ python-virtinst
 hdparm
 sos
 gdb
-ltrace
 strace
 sysstat
 tcpdump
