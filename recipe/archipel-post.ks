@@ -77,6 +77,9 @@ cat > /etc/sysconfig/iptables << \EOF
 #
 -A INPUT -j REJECT --reject-with icmp-host-prohibited
 -A FORWARD -m physdev ! --physdev-is-bridged -j REJECT --reject-with icmp-host-prohibited
+# archipel
+-A INPUT -p tcp --dport 5222 -j ACCEPT
+-A INPUT -p tcp --dport 6900:6999 -j ACCEPT
 COMMIT
 EOF
 # configure IPv6 firewall, default is all ACCEPT
@@ -101,6 +104,9 @@ cat > /etc/sysconfig/ip6tables << \EOF
 -A INPUT -p udp --dport 546 -j ACCEPT
 -A INPUT -j REJECT --reject-with icmp6-adm-prohibited
 -A FORWARD -m physdev ! --physdev-is-bridged -j REJECT --reject-with icmp6-adm-prohibited
+# archipel
+-A INPUT -p tcp --dport 5222 -j ACCEPT
+-A INPUT -p tcp --dport 6900:6999 -j ACCEPT
 COMMIT
 EOF
 
@@ -176,9 +182,12 @@ cat > /etc/archipel/archipel.conf <<EOF
 stateless_node = True
 EOF
 
-# @TODO: useless ?
-#echo "[ARCHIPEL] Reconfiguring libvirt"
-#sed "/# by vdsm/d" /etc/libvirt/libvirtd.conf  -i
+echo "[ARCHIPEL] Update the archipe init.d file"
+sed -i "s/# Required-Start:.*/# Required-Start: ovirt-firstboot/g" /etc/init.d/archipel
+sed -i "/# Required-Stop:.*/d" /etc/init.d/archipel
+sed -i "/# Should-Stop:.*/d" /etc/init.d/archipel
+sed -i "/# Default-Start:.*/d" /etc/init.d/archipel
+sed -i "/# Default-Stop:.*/d" /etc/init.d/archipel
 
 /sbin/service zfs-fuse stop 2>/dev/null
 
