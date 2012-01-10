@@ -80,16 +80,10 @@ repos.ks:
       if [ -n "$(CENTOS)" ]; then \
         CENTOS_REPO_LINE="repo --name=centos --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=os" ;\
         UPDATES_REPO_LINE="repo --name=centos-updates --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=updates" ;\
-        CONTRIB_REPO_LINE="repo --name=centos-contrib --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=contrib" ;\
-        FASTTRACK_REPO_LINE="repo --name=centos-fasttrack --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=fasttrack" ;\
-        EXTRAS_REPO_LINE="repo --name=centos-extras --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=extras" ;\
-        CENTOSPLUS_REPO_LINE="repo --name=centos-centosplus --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=centosplus" ;\
+        EPEL_REPO_LINE="repo --name=epel --baseurl=http://download.fedora.redhat.com/pub/epel/$(CENTOS_RELEASE)/${ARCH}/" ;\
         echo "$${CENTOS_REPO_LINE}" > repos.ks ;\
         echo "$${UPDATES_REPO_LINE}" >> repos.ks ;\
-        echo "$${CONTRIB_REPO_LINE}" >> repos.ks ;\
-        echo "$${FASTTRACK_REPO_LINE}" >> repos.ks ;\
-        echo "$${EXTRAS_REPO_LINE}" >> repos.ks ;\
-        echo "$${CENTOSPLUS_REPO_LINE}" >> repos.ks ;\
+        echo "$${EPEL_REPO_LINE}" >> repos.ks ;\
       else \
     	if [ -n "$(FEDORA)" ]; then \
             OVIRT_STABLE_REPO_LINE="repo --name=ovirt-stable-repo --baseurl=$(OVIRT_URL)/$(FEDORA)\n" ;\
