@@ -1,5 +1,3 @@
-# ovirt-install-node-stateless
-# ovirt_setup_libvirtd()
 # just to get a boot warning to shut up
 touch /etc/resolv.conf
 
@@ -15,19 +13,17 @@ sed -i -e "s/^[[:space:]]*#[[:space:]]*\(listen_tcp\)\>.*/\1 = 1/" \
    -e "s/^[[:space:]]*#[[:space:]]*\(listen_tls\)\>.*/\1 = 0/" \
    /etc/libvirt/libvirtd.conf
 
-
 if [ -x "/etc/sysconfig/anyterm" ]; then
-    # configure anyterm
     cat >> /etc/sysconfig/anyterm << \EOF_anyterm
     ANYTERM_CMD="sudo /usr/bin/virsh console %p"
     ANYTERM_LOCAL_ONLY=false
-    EOF_anyterm
+EOF_anyterm
 
     # permit it to run the virsh console
     echo "anyterm ALL=NOPASSWD: /usr/bin/virsh console *" >> /etc/sudoers
 fi
 
-if [ -x "/lib/systemd/system/" ]; then
+if [ -x "lib/systemd/system/" ]; then    # configure anyterm
     rm -rf /etc/systemd/system/default.target
     ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
 
@@ -50,13 +46,16 @@ if [ -x "/lib/systemd/system/" ]; then
 
     [Install]
     WantedBy=multi-user.target
-    EOF_firstboot
+EOF_firstboot
 
     systemctl enable ovirt-firstboot.service >/dev/null 2>&1
     chkconfig --del ovirt-firstboot
 else
+    echo "NO SYSTEMD: using chkconfig for starting ovirt-firstboot"
     sed -i "s/# chkconfig: 2345 99 01/# chkconfig: 2345 98 02/g" /etc/init.d/ovirt-firstboot
     chkconfig --add ovirt-firstboot
+    # Hack to make python-sqlalchemy0.7 working on centos. seriously this sucks
+    mv /usr/lib64/python2.6/site-packages/SQLAlchemy-0.7.3-py2.6-linux-$(uname -m).egg/sqlalchemy /usr/lib64/python2.6/site-packages/
 fi
 
 echo "Configuring IPTables"
@@ -173,7 +172,7 @@ semodule -v -i ovirt.pp
 cd /
 rm -rf /tmp/SELinux
 
-
+# Archipel
 echo "[ARCHIPEL] Reactivating the root account"
 passwd -uf root
 
@@ -181,10 +180,10 @@ echo "[ARCHIPEL] Creating the /vm folder"
 mkdir -p /vm
 
 echo "[ARCHIPEL] Updating the archipel config file to be in stateless mode"
-cat > /etc/archipel/archipel.conf <<EOF
+cat > /etc/archipel/archipel.conf <<EOF_archipelconf
 [GLOBAL]
 stateless_node = True
-EOF
+EOF_archipelconf
 
 echo "[ARCHIPEL] Update the archipe init.d file"
 sed -i "s/# Required-Start:.*/# Required-Start: ovirt-firstboot/g" /etc/init.d/archipel
@@ -194,4 +193,3 @@ sed -i "/# Default-Start:.*/d" /etc/init.d/archipel
 sed -i "/# Default-Stop:.*/d" /etc/init.d/archipel
 
 /sbin/service zfs-fuse stop 2>/dev/null
-
