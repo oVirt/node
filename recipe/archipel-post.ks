@@ -52,8 +52,12 @@ EOF_firstboot
     chkconfig --del ovirt-firstboot
 else
     echo "NO SYSTEMD: using chkconfig for starting ovirt-firstboot"
+    chkconfig --del ovirt-firstboot
+    chkconfig --del ovirt-post
+    sed -i "5i# chkconfig: 2345 97 03" /etc/init.d/ovirt-post
     sed -i "s/# chkconfig: 2345 99 01/# chkconfig: 2345 98 02/g" /etc/init.d/ovirt-firstboot
     chkconfig --add ovirt-firstboot
+    chkconfig --add ovirt-post
     # Hack to make python-sqlalchemy0.7 working on centos. seriously this sucks
     mv /usr/lib64/python2.6/site-packages/SQLAlchemy-0.7.3-py2.6-linux-$(uname -m).egg/sqlalchemy /usr/lib64/python2.6/site-packages/
 fi
