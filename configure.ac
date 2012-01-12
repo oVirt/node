@@ -33,8 +33,8 @@ AC_SUBST([ARCHIPEL_FLAGS])
 
 
 if test $ARCHIPEL_FLAGS; then
-    PACKAGE_NAME=archipel-node-image
-    PRODUCT_NAME=Archipel\ Node\ Hypervisor
+    PACKAGE_NAME=archipel-node-image-$DISTRO
+    PRODUCT_NAME=Archipel\ Node\ Hypervisor\ $DISTRO
     MAIN_KS=recipe/archipel-node-image.ks
 
 else
