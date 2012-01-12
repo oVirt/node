@@ -186,8 +186,10 @@ rm -rf /tmp/SELinux
 echo "[ARCHIPEL] Reactivating the root account"
 passwd -uf root
 
-echo "[ARCHIPEL] Creating the /vm folder"
+echo "[ARCHIPEL] Creating the /vm and /stateless folders"
 mkdir -p /vm
+mkdir -p /stateless
+
 
 echo "[ARCHIPEL] Updating the archipel config file to be in stateless mode"
 cat > /etc/archipel/archipel.conf <<EOF_archipelconf
