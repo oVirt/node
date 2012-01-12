@@ -52,7 +52,7 @@ Requires:       PyPAM
 Requires:       ethtool
 Requires:       cracklib-python
 Requires:       dracut
-%if 0%{?rhel}
+%if 0%{?rhel} && ! 0%{?centos}
 Requires:       grub
 # for applying patches in %post
 Requires:       patch
@@ -123,7 +123,7 @@ make install DESTDIR=%{buildroot}
 %{__install} -d -m0755 %{buildroot}%{_unitdir}
 %{__install} -p -m0644 libvirtd.service %{buildroot}%{_unitdir}
 %endif
-%if 0%{?rhel}
+%if 0%{?rhel} && ! 0%{?centos}
 # install libvirtd upstart job
 %{__install} -d -m0755 %{buildroot}%{_sysconfdir}/init
 %{__install} -p -m0644 libvirtd.upstart %{buildroot}%{_sysconfdir}/init/libvirtd.conf
@@ -149,7 +149,7 @@ make install DESTDIR=%{buildroot}
 %{__install} -p -m0755 scripts/ovirt-boot-functions %{buildroot}%{_datadir}/dracut/modules.d/91ovirtnode
 %{__install} -p -m0755 dracut/ovirt-cleanup.sh %{buildroot}%{_datadir}/dracut/modules.d/91ovirtnode
 %{__install} -p -m0644 dracut/ovirt-dracut.conf %{buildroot}%{_sysconfdir}/dracut.conf.d
-%if 0%{?rhel}
+%if 0%{?rhel} && ! 0%{?centos}
 # dracut patches for rhel6
 %{__install} -p -m0644 dracut/dracut-3d88d27810acc7782618d67a03ff5c0e41494ca4.patch %{buildroot}%{app_root}
 %{__install} -p -m0644 dracut/dracut-93724aa28fc20c8b7f0167201d1759b7118ba890.patch %{buildroot}%{app_root}
@@ -177,7 +177,7 @@ echo "# File where default configuration is kept" > %{buildroot}/%{_sysconfdir}/
 %if 0%{?centos}
 %{__install} -p -m0644 scripts/collectd.py %{buildroot}%{python_sitelib}/ovirt_config_setup
 %endif
-%if 0%{?rhel}
+%if 0%{?rhel} && ! 0%{?centos}
 %{__install} -p -m0644 scripts/rhn.py %{buildroot}%{python_sitelib}/ovirt_config_setup
 %endif
 %{__install} -d -m0755 %{buildroot}%{python_sitelib}/ovirtnode
@@ -196,7 +196,7 @@ echo "# File where default configuration is kept" > %{buildroot}/%{_sysconfdir}/
 %{__install} -p -m0755 scripts/ovirt-admin-shell %{buildroot}%{_libexecdir}
 # python auto install
 %{__install} -p -m0755 scripts/ovirt-auto-install.py %{buildroot}%{_libexecdir}/ovirt-auto-install
-#%if 0%{?rhel}
+#%if 0%{?rhel} && ! 0%{?centos}
 # python-augeas is not in RHEL-6
 # specific version of python-augeas is not available in Fedora yet
 %{__install} -p -m0644 scripts/augeas.py %{buildroot}%{python_sitelib}
@@ -222,7 +222,7 @@ echo "# File where default configuration is kept" > %{buildroot}/%{_sysconfdir}/
 if [ ! -e /boot/grub/splash.xpm.gz ]; then
   cp %{app_root}/grub-splash.xpm.gz /boot/grub/splash.xpm.gz
 fi
-%if 0%{?rhel}
+%if 0%{?rhel} && ! 0%{?centos}
 # apply dracut fixes not in rhel6
 # rhbz#683330
 # dracut.git commits rediffed for dracut-004-53.el6
@@ -277,7 +277,7 @@ fi
 %if 0%{?fedora}
 %{_unitdir}/libvirtd.service
 %endif
-%if 0%{?rhel}
+%if 0%{?rhel} && ! 0%{?centos}
 %{_sysconfdir}/init/libvirtd.conf
 %endif
 %if 0%{?centos}
@@ -292,7 +292,7 @@ fi
 %{app_root}/grub-splash.xpm.gz
 # end i386 bits
 %{app_root}/syslinux-vesa-splash.jpg
-%if 0%{?rhel}
+%if 0%{?rhel} && ! 0%{?centos}
 %{app_root}/dracut-3d88d27810acc7782618d67a03ff5c0e41494ca4.patch
 %{app_root}/dracut-93724aa28fc20c8b7f0167201d1759b7118ba890.patch
 %endif
@@ -330,7 +330,7 @@ fi
 %{_sbindir}/unpersist
 %{python_sitelib}/ovirt_config_setup
 %{python_sitelib}/ovirtnode
-#%if 0%{?rhel}
+#%if 0%{?rhel} && ! 0%{?centos}
 %{python_sitelib}/augeas*
 #%endif
 

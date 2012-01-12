@@ -23,6 +23,12 @@ EOF_anyterm
     echo "anyterm ALL=NOPASSWD: /usr/bin/virsh console *" >> /etc/sudoers
 fi
 
+if [ -x "/usr/libexec/qemu-kvm" ]; then
+    echo "qemu-kvm is in /usr/libexec/qemu-kvm... thanks CentOS. Symlinking this"
+    ln -s /usr/libexec/qemu-kvm /usr/bin/kvm
+    ln -s /usr/libexec/qemu-kvm /usr/bin/qemu-kvm
+fi
+
 if [ -x "lib/systemd/system/" ]; then    # configure anyterm
     rm -rf /etc/systemd/system/default.target
     ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
