@@ -18,8 +18,6 @@ less
 ## @TODO: added by archipel to report in rhev.pkgs
 # host statistics rhbz#588852
 vhostmd
-matahari-network
-virt-manager-tui
 #VDSM
 vdsm-cli
 vdsm-reg

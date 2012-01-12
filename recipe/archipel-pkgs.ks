@@ -1,5 +1,3 @@
-%include centos-pkgs.ks
-
 samba-client
 cifs-utils
 python-setuptools
