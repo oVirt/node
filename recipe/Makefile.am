@@ -77,8 +77,6 @@ $(PACKAGE).ks: repos.ks version.ks
 
 repos.ks:
 	( \
-      OVIRT_STABLE_REPO_LINE="repo --name=ovirt-stable-repo --baseurl=$(OVIRT_URL)/$(FEDORA)\n" ;\
-      OVIRT_NIGHTLY_REPO_LINE="repo --name=ovirt-nightly-repo --baseurl=$(OVIRT_NIGHTLY_URL)/$(FEDORA)\n" ;\
       if [ -n "$(CENTOS)" ]; then \
         CENTOS_REPO_LINE="repo --name=centos --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=os" ;\
         UPDATES_REPO_LINE="repo --name=centos-updates --mirrorlist=$(CENTOS_MIRROR)?release=$(CENTOS_RELEASE)&arch=${ARCH}&repo=updates" ;\
@@ -86,8 +84,12 @@ repos.ks:
         echo "$${CENTOS_REPO_LINE}" > repos.ks ;\
         echo "$${UPDATES_REPO_LINE}" >> repos.ks ;\
         echo "$${EPEL_REPO_LINE}" >> repos.ks ;\
-      else \
+      elif [ -n "$(FEDORA)" ]; then \
+          OVIRT_STABLE_REPO_LINE="repo --name=ovirt-stable-repo --baseurl=$(OVIRT_URL)/$(FEDORA)\n" ;\
+          OVIRT_NIGHTLY_REPO_LINE="repo --name=ovirt-nightly-repo --baseurl=$(OVIRT_NIGHTLY_URL)/$(FEDORA)\n" ;\
           if [ -n "$(FEDORA)" ]; then \
+                OVIRT_STABLE_REPO_LINE="repo --name=ovirt-stable-repo --baseurl=$(OVIRT_URL)/$(FEDORA)\n" ;\
+                OVIRT_NIGHTLY_REPO_LINE="repo --name=ovirt-nightly-repo --baseurl=$(OVIRT_NIGHTLY_URL)/$(FEDORA)\n" ;\
             if [ 0$(FEDORA) == 0$(CUR_RAWHIDE) ]; then \
                 FEDORA_REPO=rawhide ;\
                 FEDORA_REPO_LOC="$(if $(FEDORA_URL),--baseurl=$(FEDORA_URL)/development/rawhide/$(ARCH)/os,--mirrorlist=$(FEDORA_MIRROR)?repo=rawhide&arch=$(ARCH))" ;\
@@ -102,7 +104,7 @@ repos.ks:
             fi ;\
             echo "repo --name=$${FEDORA_REPO} $${FEDORA_REPO_LOC}" > repos.ks ;\
             printf "$${UPDATE_REPO_LINE}" >> repos.ks ;\
-            printf "$${OVIRT_REPO_LINE}" >> repos.ks ;\
+            printf "$${OVIRT_STABLE_REPO_LINE}" >> repos.ks ;\
             if [ "$${BUILD_TYPE}" == "NIGHTLY" ]; then \
               printf "$${OVIRT_NIGHTLY_REPO_LINE}" >> repos.ks ;\
             fi ;\
