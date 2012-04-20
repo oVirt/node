@@ -15,6 +15,10 @@
        -e "s/^[[:space:]]*#[[:space:]]*\(listen_tls\)\>.*/\1 = 0/" \
        /etc/libvirt/libvirtd.conf
 
+    # disable mdns/avahi
+    sed -i -e 's/^[[:space:]]*#[[:space:]]*\(mdns_adv = 0\).*/\1/' \
+       /etc/libvirt/qemu.conf
+
 #ovirt_setup_anyterm()
    # configure anyterm
    cat >> /etc/sysconfig/anyterm << \EOF_anyterm
@@ -30,30 +34,7 @@ EOF_anyterm
 
 rm -rf /etc/systemd/system/default.target
 ln -sf /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
-
-# setup ovirt-firstboot multi-user dependency
-cat >> /lib/systemd/system/ovirt-firstboot.service << \EOF_firstboot
-[Unit]
-Description=firstboot configuration program (text mode)
-After=plymouth-quit.service
-Before=getty@tty1.service
-
-[Service]
-Environment=RUNLEVEL=3
-ExecStartPre=-/bin/plymouth quit
-ExecStart=/etc/init.d/ovirt-firstboot start
-TimeoutSec=0
-RemainAfterExit=yes
-Type=oneshot
-SysVStartPriority=99
-StandardInput=tty-force
-
-[Install]
-WantedBy=multi-user.target
-EOF_firstboot
-
 systemctl enable ovirt-firstboot.service >/dev/null 2>&1
-chkconfig --del ovirt-firstboot
 
 echo "Configuring IPTables"
 # here, we need to punch the appropriate holes in the firewall
@@ -165,3 +146,6 @@ rm -rf /tmp/SELinux
 
 # Workaround for rhbz#755464
 /sbin/service zfs-fuse stop 2>/dev/null
+
+# Workaround for vdsm needing /etc/ovirt-node-image-release
+ln -s /etc/system-release /etc/ovirt-node-image-release

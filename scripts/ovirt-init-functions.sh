@@ -1,26 +1,45 @@
 #!/bin/bash
 #
-# ovirt-early Start early ovirt services
+# ovirt-init-functions.sh - Wrapps all functions needed by oVirt at boot time.
 #
-# chkconfig: 23 01 99
+# Copyright (C) 2008-2010 Red Hat, Inc.
+# Written by Darryl L. Pierce <dpierce@redhat.com>
 #
-### BEGIN INIT INFO
-# Provides: ovirt-early
-# Default-Start: 2 3 4 5
-# Dewscription: Managed node early configuration service
-### END INIT INFO
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation; version 2 of the License.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+# MA  02110-1301, USA.  A copy of the GNU General Public License is
+# also available at http://www.gnu.org/copyleft/gpl.html.
+#
 
-# Source functions library
 . /etc/init.d/functions
 . /usr/libexec/ovirt-functions
+
 . /usr/libexec/ovirt-boot-functions
 
-prog=ovirt-early
-VAR_SUBSYS_OVIRT_EARLY=/var/lock/subsys/$prog
+NODE_CONFIG=/etc/sysconfig/node-config
+
+VAR_SUBSYS_OVIRT_EARLY=/var/lock/subsys/ovirt-early
+VAR_SUBSYS_NODECONFIG=/var/lock/subsys/node-config
+VAR_SUBSYS_OVIRT_POST=/var/lock/subsys/ovirt-post
+VAR_SUBSYS_OVIRT_CIM=/var/lock/subsys/ovirt-cim
 
 BONDING_MODCONF_FILE=/etc/modprobe.d/bonding
 AUGTOOL_CONFIG=/var/tmp/augtool-config
 EARLY_DIR=/etc/ovirt-early.d
+
+#
+# ovirt-early
+#
 
 get_mac_addresses() {
     local DEVICE=$1
@@ -138,6 +157,21 @@ configure_management_interface() {
 }
 
 start_ovirt_early () {
+    [ -f "$VAR_SUBSYS_NODECONFIG" ] && exit 0
+    {
+        # FIXME Hack around rhbz#806349 and which might be because of rhbz#807203
+        mount -a
+        log "Starting ovirt-early"
+        _start_ovirt_early
+        RETVAL=$?
+        # TEMP fix broken libvirtd.conf
+        sed -c -i '/^log_filters=/d' /etc/libvirt/libvirtd.conf
+        log "Completed ovirt-early"
+    } >> $OVIRT_LOGFILE 2>&1
+    return $RETVAL
+}
+
+_start_ovirt_early () {
     touch $VAR_SUBSYS_OVIRT_EARLY
     # oVirt boot parameters
     #   BOOTIF=link|eth*|<MAC> (appended by pxelinux)
@@ -241,6 +275,11 @@ start_ovirt_early () {
     # in auto-install mode, overwrite the disk chosen by storage_init parameter
     firstboot=
 
+    # wipe_fakeraid
+    # force the wiping of fakeraid metadata when auto-installing
+    # otherwise, the auto-install will fail
+    wipe_fakeraid=
+
     #   ovirt_runtime_mode
     # overrides the runtime mode defined in /etc/sysconfig/node-config
     runtime_mode=
@@ -267,6 +306,12 @@ start_ovirt_early () {
     #   snmp_password=<authpassphrase>
     # enable snmpd and set password for "root" SNMPv3 USM user
     snmp_password=
+
+    # CIM related options
+    # cim_enabled=0|1
+    # cim_passwd=<encrypted password>
+    cim_passwd=
+    cim_enabled=
 
     #   pxelinux format: ip=<client-ip>:<boot-server-ip>:<gw-ip>:<netmask>
     #   anaconda format: ip=<client-ip> netmask=<netmask> gateway=<gw-ip>
@@ -329,6 +374,12 @@ start_ovirt_early () {
     # save boot parameters like console= for local disk boot menu
     bootparams=
     cat /etc/system-release >> $OVIRT_LOGFILE
+    # determine iscsi_install status
+    if grep -q iscsi_install /proc/cmdline; then
+        iscsi_install=0
+    else
+        iscsi_install=1
+    fi
 
     for i in $(cat /proc/cmdline); do
         case $i in
@@ -372,7 +423,7 @@ start_ovirt_early () {
                     init=
                     for d in $hostvgdisks; do
                         did="$(IFS="$oldIFS" parse_disk_id "$d")"
-                        if [ -z "$did" ]; then
+                        if [ -z "$did" -a $iscsi_install == 1 ]; then
                             autoinstall_failed
                         fi
                         if [ -n "$init" ]; then
@@ -402,7 +453,7 @@ start_ovirt_early () {
                     IFS="$oldIFS"
                 fi
             fi
-            if [ -z "$init" ]; then
+            if [ -z "$init" -a $iscsi_install == 1 ]; then
                 log "Selected disk $i is not valid."
             fi
             ;;
@@ -488,6 +539,11 @@ start_ovirt_early () {
                 /usr/sbin/usermod -p $(grep ^root /etc/shadow | sed 's/:/ /g' | awk '{print $2}') admin
                 persist /etc/shadow /etc/passwd
             fi
+            if ! grep -q ^cim /etc/passwd; then
+                unmount_config /etc/passwd /etc/shadow
+                useradd -g cim -s /usr/libexec/ovirt-admin-shell cim
+                persist /etc/shadow /etc/passwd
+            fi
             ;;
             standalone=no | standalone=0 | ovirt_standalone=no | ovirt_standalone=0)
             standalone=0
@@ -502,6 +558,12 @@ start_ovirt_early () {
             ;;
             firstboot* | ovirt_firstboot* | reinstall)
             firstboot=1
+            ;;
+            wipe_fakeraid=no | wipe_fakeraid=0 )
+            wipe_fakeraid=0
+            ;;
+            wipe_fakeraid*)
+            wipe_fakeraid=1
             ;;
             stateless=no | stateless=0 | ovirt_stateless=no | ovirt_stateless=0)
             stateless=0
@@ -526,6 +588,15 @@ start_ovirt_early () {
             if [ -z "$adminpw" ]; then
                 adminpw=$rootpw
             fi
+            ;;
+            cim_passwd=*)
+            cim_passwd=${i#cim_passwd=}
+            ;;
+            cim_enabled=0 | cim_enabled=no)
+            cim_enabled=0
+            ;;
+            enable_cim* | enable_cim | cim_enabled* | cim_enabled)
+            cim_enabled=1
             ;;
             snmp_password=*)
             snmp_password=${i#snmp_password=}
@@ -632,6 +703,19 @@ start_ovirt_early () {
             iscsi_name=*)
             iscsi_name=${i#iscsi_name=}
             ;;
+            iscsi_init=*)
+            iscsi_init=${i#iscsi_init=}
+            ;;
+            iscsi_server=*)
+            i=${i#iscsi_server=}
+            eval $(printf $i|awk -F: '{print "iscsi_target_host="$1; print "iscsi_target_port="$2;}')
+            ;;
+            iscsi_target_name=*)
+            iscsi_target_name=${i#iscsi_target_name=}
+            ;;
+            iscsi_install*)
+            iscsi_install="Y"
+            ;;
             swap_encrypt=* | ovirt_swap_encrypt=* )
             i=${i#ovirt_swap_encrypt=}
             i=${i#swap_encrypt=}
@@ -699,8 +783,7 @@ start_ovirt_early () {
 
 
     # save boot parameters as defaults for ovirt-config-*
-
-    params="bootif init init_app vol_boot_size vol_swap_size vol_root_size vol_config_size vol_logging_size vol_data_size vol_swap2_size vol_data2_size crypt_swap crypt_swap2 upgrade standalone overcommit ip_address ip_netmask ip_gateway ipv6 dns ntp vlan ssh_pwauth syslog_server syslog_port collectd_server collectd_port bootparams hostname firstboot rhn_type rhn_url rhn_ca_cert rhn_username rhn_password rhn_profile rhn_activationkey rhn_proxy rhn_proxyuser rhn_proxypassword runtime_mode kdump_nfs iscsi_name snmp_password install netconsole_server netconsole_port stateless"
+    params="bootif init init_app vol_boot_size vol_swap_size vol_root_size vol_config_size vol_logging_size vol_data_size vol_swap2_size vol_data2_size crypt_swap crypt_swap2 upgrade standalone overcommit ip_address ip_netmask ip_gateway ipv6 dns ntp vlan ssh_pwauth syslog_server syslog_port collectd_server collectd_port bootparams hostname firstboot rhn_type rhn_url rhn_ca_cert rhn_username rhn_password rhn_profile rhn_activationkey rhn_proxy rhn_proxyuser rhn_proxypassword runtime_mode kdump_nfs iscsi_name snmp_password install netconsole_server netconsole_port stateless cim_enabled wipe_fakeraid iscsi_init iscsi_target_name iscsi_target_host iscsi_target_port iscsi_install"
     # mount /config unless firstboot is forced
     if [ "$firstboot" != "1" ]; then
         mount_config
@@ -728,6 +811,11 @@ start_ovirt_early () {
         fi
     fi
 
+    if [ -n "$cim_passwd" ]; then
+        log "Setting temporary admin password: $cim_passwd"
+        unmount_config /etc/passwd /etc/shadow
+        /usr/sbin/usermod -p "$cim_passwd" cim
+    fi
     if [ -n "$adminpw" ]; then
         log "Setting temporary admin password: $adminpw"
         unmount_config /etc/passwd /etc/shadow
@@ -749,10 +837,12 @@ start_ovirt_early () {
         # so make sure we persist it after a successful login
         cat >> /etc/profile << EOF
 # added by ovirt-early
-sudo persist /etc/passwd /etc/shadow
-if LC_ALL=C sudo chage -l root | grep  -q "password must be changed" \
-    || LC_ALL=C sudo chage -l admin | grep -q "password must be changed"; then
-    sudo /usr/libexec/ovirt-functions unmount_config /etc/passwd /etc/shadow
+if [ "$USER" = "root" -o "$USER" = "admin" ]; then
+    sudo persist /etc/passwd /etc/shadow
+    if LC_ALL=C sudo chage -l root | grep  -q "password must be changed" \
+        || LC_ALL=C sudo chage -l admin | grep -q "password must be changed"; then
+        sudo /usr/libexec/ovirt-functions unmount_config /etc/passwd /etc/shadow
+    fi
 fi
 EOF
     fi
@@ -812,32 +902,450 @@ reload_ovirt_early () {
     start_ovirt_early
 }
 
-case "$1" in
-    start)
-        [ -f "$VAR_SUBSYS_NODE_CONFIG" ] && exit 0
-        echo -n "Starting ovirt-early: "
-        {
-            log "Starting ovirt-early"
-            start_ovirt_early
-            # TEMP fix broken libvirtd.conf
-            sed -c -i '/^log_filters=/d' /etc/libvirt/libvirtd.conf
-            log "Completed ovirt-early"
-            RETVAL=$?
-        } >> $OVIRT_LOGFILE 2>&1
-        test $RETVAL == 0 && success || failure
-        ;;
-    status)
-        status $prog
-        ;;
-    reload)
-        reload_ovirt_early
-        ;;
-    stop)
-        stop_ovirt_early
-        ;;
-    *)
-        echo "Usage: ovirt-early {start}"
-        RETVAL=2
-esac
+#
+# ovirt-awake
+#
 
-exit $RETVAL
+send_text () {
+    local text=${1}
+
+    echo "$text" 1>&3
+}
+
+receive_text () {
+    read 0<&3
+}
+
+error () {
+    local text=${1-}
+
+    send_text "ERR: (ovirt-awake) ${text}"
+    # log "${text}"
+}
+
+ovirt_startup () {
+    local mgmthost=${OVIRT_MANAGEMENT_SERVER}
+    local mgmtport=${OVIRT_MANAGEMENT_PORT}
+
+    if [[ -z "${mgmthost}" ]] || [[ -z "${mgmtport}" ]]; then
+        find_srv identify tcp
+        mgmthost=$SRV_HOST
+        mgmtport=$SRV_PORT
+    fi
+
+    if [[ -n "${mgmthost}" ]] && [[ -n "${mgmtport}" ]]; then
+        # log "Notifying oVirt management server: ${mgmthost}:${mgmtport}"
+        exec 3<>/dev/tcp/$mgmthost/$mgmtport
+
+        receive_text
+        if [ $REPLY == "HELLO?" ]; then
+            log "Starting wakeup conversation."
+            send_text "HELLO!"
+            receive_text
+            if [ $REPLY == "MODE?" ]; then
+                send_text "AWAKEN"
+                receive_text
+                KEYTAB=$(echo $REPLY | awk '{ print $2 }')
+                if [ -n "$KEYTAB" -a -n "$KEYTAB_FILE" ]; then
+                    # log "Retrieving keytab: '$KEYTAB'"
+                    wget -q "$KEYTAB" --no-check-certificate --output-document="$KEYTAB_FILE"
+                else
+                    log "No keytab to retrieve"
+                fi
+                send_text ACK
+            else
+                error "Did not get a mode request."
+            fi
+        else
+            error "Did not get a proper startup marker."
+        fi
+        # log "Disconnecting."
+        <&3-
+    else
+        # log "Missing server information. Failing..."
+        return 1
+    fi
+}
+
+# Override this method to provide support for notifying a management
+# system that the node has started and will be available after
+# system initialization
+start_ovirt_awake () {
+    local RC=0
+
+    [ -f "$VAR_SUBSYS_NODECONFIG" ] && exit 0
+    {
+        touch $VAR_SUBSYS_NODECONFIG
+        log "Starting ovirt-awake."
+        case "$OVIRT_RUNTIME_MODE" in
+            "none")
+                log "Node is operating in unmanaged mode."
+                ;;
+            "ovirt")
+                log "Node is operating in ovirt mode."
+                ovirt_startup
+                RC=$?
+                ;;
+            "managed")
+                if [ -x /config/$MANAGEMENT_SCRIPTS_DIR/awake ]; then
+                    log "Executing /config/$MANAGEMENT_SCRIPTS_DIR/awake"
+                    /config/$MANAGEMENT_SCRIPTS_DIR/awake
+                else
+                    echo "No script found to notify management server during awake state."
+                fi
+                ;;
+        esac
+
+        rm -f $VAR_SUBSYS_NODECONFIG
+
+        log "Completed ovirt-awake: RETVAL=$RC"
+    } >> $OVIRT_LOGFILE 2>&1
+
+    return $RC
+}
+
+stop_ovirt_awake () {
+    echo -n "Stopping ovirt-awake: "
+    success
+}
+
+reload_ovirt_awake () {
+    stop_ovirt_awake
+    start_ovirt_awake
+}
+
+#
+# ovirt-firstboot
+#
+VAR_SUBSYS_OVIRT_FIRSTBOOT=/var/lock/subsys/ovirt-firstboot
+
+trap '__st=$?; stop_log; exit $__st' 0
+trap 'exit $?' 1 2 13 15
+
+check_version(){
+    if [ -e "/dev/HostVG/Root" ]; then
+    log "                                          "
+    log "   Major version upgrades are not allowed."
+    log "   Please uninstall existing version and reinstall."
+    log "   Press Enter to drop to emergency shell."
+    read < /dev/console
+    bash < /dev/console
+    fi
+}
+
+start_ovirt_firstboot ()
+{
+    if is_managed; then
+        exit 0
+    fi
+
+    if ! is_firstboot && ! is_auto_install && ! is_upgrade && ! is_install && ! is_stateless; then
+        return
+    fi
+
+    touch $VAR_SUBSYS_OVIRT_FIRSTBOOT
+    /sbin/restorecon -e /var/lib/stateless/writable -e /data -e /config -e /proc -e /sys -rv / >> $OVIRT_TMP_LOGFILE 2>&1
+
+    # Hide kernel messages on the console
+    dmesg -n 1
+
+    is_stateless
+    stateless=$?
+
+    is_auto_install
+    auto_install=$?
+    if [ "$auto_install" = "0" -o "$stateless" = "0" ]; then
+        /usr/libexec/ovirt-auto-install
+        rc=$?
+        # Handle Log file
+        if [ -f $OVIRT_TMP_LOGFILE ]; then
+            cat $OVIRT_TMP_LOGFILE >> $OVIRT_LOGFILE
+            rm -f $OVIRT_TMP_LOGFILE
+        fi
+        if [ $rc -ne 0 ]; then
+            autoinstall_failed
+        fi
+    elif [ "$auto_install" = "2" ]; then
+        echo "Device specified in storage_init does not exist"
+        autoinstall_failed
+    fi
+
+    if is_stateless; then
+        return 0
+    fi
+
+    if is_auto_install || is_upgrade; then
+        plymouth --hide-splash
+        mount_live
+        check_version
+        # auto install covers this already
+        if ! is_auto_install; then
+            /usr/libexec/ovirt-config-boot /live "$OVIRT_BOOTPARAMS" no
+        fi
+        if [ $? -ne 0 ]; then
+            autoinstall_failed
+        fi
+        disable_firstboot
+        ovirt_store_firstboot_config || autoinstall_failed
+        reboot
+        if [ $? -ne 0 ]; then
+            autoinstall_failed
+        fi
+        return 1
+    fi
+
+    if is_firstboot || is_install ; then
+        plymouth --hide-splash
+
+        export LVM_SUPPRESS_FD_WARNINGS=0
+        /usr/libexec/ovirt-config-installer -x < /dev/console
+
+        plymouth --show-splash
+    fi
+    disable_firstboot
+
+    ovirt_store_firstboot_config >> $OVIRT_LOGFILE 2>&1
+
+    rm -f $VAR_SUBSYS_OVIRT_FIRSTBOOT
+}
+
+stop_ovirt_firstboot () {
+    return 0
+}
+
+reload_ovirt_firstboot () {
+    stop_ovirt_firstboot
+    start_ovirt_firstboot
+}
+
+#
+# ovirt
+#
+VAR_SUBSYS_OVIRT=/var/lock/subsys/ovirt
+
+ovirt_start() {
+    if is_standalone; then
+        return 0
+    fi
+    find_srv ipa tcp
+    if [ -n "$SRV_HOST" -a -n "$SRV_PORT" ]; then
+        krb5_conf=/etc/krb5.conf
+        # FIXME this is IPA specific
+        wget -q --no-check-certificate \
+            http://$SRV_HOST:$SRV_PORT/ipa/config/krb5.ini -O $krb5_conf.tmp
+        if [ $? -ne 0 ]; then
+            log "Failed to get $krb5_conf"; return 1
+        fi
+        mv $krb5_conf.tmp $krb5_conf
+    else
+        log "skipping Kerberos configuration"
+    fi
+
+
+    find_srv collectd udp
+    if [ -n "$SRV_HOST" -a -n "$SRV_PORT" ]; then
+        collectd_conf=/etc/collectd.conf
+        if [ -f $collectd_conf.in ]; then
+            sed -e "s/@COLLECTD_SERVER@/$SRV_HOST/" \
+                -e "s/@COLLECTD_PORT@/$SRV_PORT/" \
+                -e "/<Plugin rrdtool>/,/<\/Plugin>/d" $collectd_conf.in \
+                > $collectd_conf
+            if [ $? -ne 0 ]; then
+                log "Failed to write $collectd_conf"; return 1
+            fi
+        fi
+    else
+        log "skipping collectd configuration, collectd service not available"
+    fi
+
+    find_srv qpidd tcp
+    if [ -n "$SRV_HOST" -a -n "$SRV_PORT" ]; then
+        libvirt_qpid_conf=/etc/sysconfig/libvirt-qpid
+        if [ -f $libvirt_qpid_conf ]; then
+            echo "LIBVIRT_QPID_ARGS=\"--broker $SRV_HOST --port $SRV_PORT\"" >> $libvirt_qpid_conf
+            echo "/usr/kerberos/bin/kinit -k -t /etc/libvirt/krb5.tab qpidd/`hostname`" >> $libvirt_qpid_conf
+        fi
+        matahari_conf=/etc/sysconfig/matahari
+        if [ -f $matahari_conf ]; then
+            echo "MATAHARI_ARGS=\"--broker $SRV_HOST --port $SRV_PORT\"" >> $matahari_conf
+            echo "/usr/kerberos/bin/kinit -k -t /etc/libvirt/krb5.tab qpidd/`hostname`" >> $matahari_conf
+        fi
+    else
+        log "skipping libvirt-qpid and matahari configuration, could not find $libvirt_qpid_conf"
+    fi
+}
+
+start_ovirt () {
+    [ -f "$VAR_SUBSYS_OVIRT" ] && exit 0
+    {
+        log "Starting ovirt"
+        touch $VAR_SUBSYS_OVIRT
+        case $OVIRT_RUNTIME_MODE in
+            "ovirt")
+                ovirt_start
+                ;;
+            "managed")
+                if [ -x $MANAGEMENT_SCRIPTS_DIR/ready ]; then
+                    log "Executing $MANAGEMENT_SCRIPTS_DIR/ready."
+                    $MANAGEMENT_SCRIPTS_DIR/ready
+                    RC=$?
+                else
+                    log "No script to perform node activation."
+                fi
+        esac
+        rm -f $VAR_SUBSYS_OVIRT
+        log "Completed ovirt"
+    } >> $OVIRT_LOGFILE 2>&1
+    return $RC
+}
+
+stop_ovirt () {
+    rm -f $VAR_SUBSYS_OVIRT
+}
+
+reload_ovirt () {
+        stop_ovirt
+        start_ovirt
+}
+
+#
+# ovirt-post
+#
+start_ovirt_post() {
+    [ -f "$VAR_SUBSYS_OVIRT_POST" ] && exit 0
+    {
+        log "Starting ovirt-post"
+        # wait for libvirt to finish initializing
+        local count=0
+        while true; do
+            if virsh connect qemu:///system --readonly >/dev/null 2>&1; then
+                break
+            elif [ "$count" == "100" ]; then
+                log "Libvirt did not initialize in time..."
+                return 1
+            else
+                log "Waiting for libvirt to finish initializing..."
+                count=$(expr $count + 1)
+                sleep 1
+            fi
+
+            touch $VAR_SUBSYS_OVIRT_POST
+
+        done
+        BACKUP=$(mktemp)
+        ISSUE=/etc/issue
+        ISSUE_NET=/etc/issue.net
+        egrep -v "[Vv]irtualization hardware" $ISSUE > $BACKUP
+        cp -f $BACKUP $ISSUE
+        rm $BACKUP
+        hwvirt=$(virsh --readonly capabilities)
+        if [[ $hwvirt =~ kvm ]]; then
+            log "Hardware virtualization detected"
+        else
+            log "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+            log "!!! Hardware Virtualization Is Unavailable !!!"
+            log "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+
+            echo "Virtualization hardware is unavailable." >> $ISSUE
+
+            flags=$(cat /proc/cpuinfo | grep "^flags")
+            if [[ $flags =~ vmx ]] || [[ $flags =~ svm ]]; then
+                echo "(Virtualization hardware was detected but is disabled)" >> $ISSUE
+            else
+                echo "(No virtualization hardware was detected on this system)" >> $ISSUE
+            fi
+        fi
+        if is_local_storage_configured; then
+            echo "" >> $ISSUE
+            echo "Please login as 'admin' to configure the node" >> $ISSUE
+        fi
+        cp -f $ISSUE $ISSUE_NET
+
+        # Small hack to fix https://bugzilla.redhat.com/show_bug.cgi?id=805313
+
+        service network restart 2>/dev/null
+
+        if is_standalone; then
+            return 0
+        fi
+
+        # persist selected configuration files
+        ovirt_store_config \
+            /etc/krb5.conf \
+            /etc/node.d \
+            /etc/sysconfig/node-config \
+            /etc/libvirt/krb5.tab \
+            /etc/ssh/ssh_host*_key*
+
+        . /usr/libexec/ovirt-functions
+
+        # successfull boot from /dev/HostVG/Root
+        if grep -q -w root=live:LABEL=Root /proc/cmdline; then
+            # set first boot entry as permanent default
+            ln -snf /dev/.initramfs/live/grub /boot/grub
+            mount -o rw,remount LABEL=Root /dev/.initramfs/live > /tmp/grub-savedefault.log 2>&1
+            echo "savedefault --default=0" | grub >> /tmp/grub-savedefault.log 2>&1
+            mount -o ro,remount LABEL=Root /dev/.initramfs/live >> /tmp/grub-savedefault.log 2>&1
+        fi
+
+        # perform any post startup operations
+        case $OVIRT_RUNTIME_MODE in
+        esac
+
+        rm -f $VAR_SUBSYS_OVIRT_POST
+
+        log "Completed ovirt-post"
+    } >> $OVIRT_LOGFILE 2>&1
+}
+
+stop_ovirt_post () {
+    echo -n "Stopping ovirt-post: "
+    success
+}
+
+reload_ovirt_post () {
+    stop_ovirt_post
+    start_ovirt_post
+}
+
+
+#
+# ovirt-cim
+#
+start_ovirt_cim() {
+    [ -f "$VAR_SUBSYS_OVIRT_cim" ] && exit 0
+    {
+        log "Starting ovirt-cim"
+
+        touch $VAR_SUBSYS_OVIRT_CIM
+
+        if is_cim_enabled; then
+            python -c 'from ovirtnode.ovirtfunctions import *; manage_firewall_port("5989","open","tcp")'
+            service sblim-sfcb start
+        fi
+
+        rm -f $VAR_SUBSYS_OVIRT_CIM
+
+        log "Completed ovirt-cim"
+    } >> $OVIRT_LOGFILE 2>&1
+}
+
+stop_ovirt_cim () {
+    echo -n "Stopping ovirt-cim: "
+    if service sblim-sfcb status >/dev/null; then
+        python -c 'from ovirtnode.ovirtfunctions import *; manage_firewall_port("5989","close","tcp")'
+        service sblim-sfcb stop
+    fi
+    success
+}
+
+reload_ovirt_cim () {
+    stop_ovirt_cim
+    start_ovirt_cim
+}
+
+
+#
+# If called with a param from service file:
+#
+$@

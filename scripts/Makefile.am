@@ -17,11 +17,19 @@
 
 EXTRA_DIST = \
   node-config \
-  ovirt-awake \
-  ovirt-early \
-  ovirt \
-  ovirt-post \
-  ovirt-firstboot \
+  ovirt-awake.init \
+  ovirt-awake.service \
+  ovirt-early.init \
+  ovirt-early.service \
+  ovirt.init \
+  ovirt.service \
+  ovirt-post.init \
+  ovirt-post.service \
+  ovirt-firstboot.init \
+  ovirt-firstboot.service \
+  ovirt-cim.init \
+  ovirt-cim.service \
+  cim.py \
   local_boot_trigger.sh \
   augeas.py \
   __init__.py \
@@ -53,7 +61,6 @@ dist_libexec_SCRIPTS = \
   ovirt-config-logging \
   ovirt-config-networking \
   ovirt-config-rhn \
-  ovirt-config-snmp \
   ovirt-config-password \
   ovirt-config-storage \
   ovirt-config-uninstall \
@@ -61,4 +68,5 @@ dist_libexec_SCRIPTS = \
   ovirt-functions \
   ovirt-boot-functions \
   ovirt-process-config \
-  ovirt-rpmquery
+  ovirt-rpmquery \
+  ovirt-init-functions.sh

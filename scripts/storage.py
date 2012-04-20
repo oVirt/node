@@ -43,6 +43,7 @@ class Storage:
         self.BOOTDRIVE = ""
         self.HOSTVGDRIVE = ""
         self.APPVGDRIVE = []
+        self.ISCSIDRIVE = ""
         # -1 indicates data partition should use remaining disk
         self.DATA_SIZE = -1
         # gpt or msdos partition table type
@@ -60,7 +61,10 @@ class Storage:
             else:
                 self.ROOTDRIVE = translate_multipath_device(OVIRT_VARS["OVIRT_INIT"])
                 self.HOSTVGDRIVE = translate_multipath_device(OVIRT_VARS["OVIRT_INIT"])
-
+            if is_iscsi_install():
+                logger.info(self.BOOTDRIVE)
+                logger.info(self.ROOTDRIVE)
+                self.BOOTDRIVE = translate_multipath_device(self.ROOTDRIVE)
         mem_size_cmd = "awk '/MemTotal:/ { print $2 }' /proc/meminfo"
         mem_size_mb = subprocess.Popen(mem_size_cmd, shell=True, stdout=PIPE, stderr=STDOUT)
         MEM_SIZE_MB = mem_size_mb.stdout.read()
@@ -277,7 +281,7 @@ class Storage:
         min_data_size = self.DATA_SIZE
         if self.DATA_SIZE == -1 :
             min_data_size=5
-        if OVIRT_VARS["OVIRT_ISCSI_ENABLED"] == "y":
+        if is_iscsi_install():
             BOOTDRIVESPACE = get_drive_size(self.BOOTDRIVE)
             drive_list.append("BOOT")
             drive_space_dict["BOOTDRIVESPACE"] = BOOTDRIVESPACE
@@ -317,11 +321,12 @@ class Storage:
 
     def create_hostvg(self):
         logger.info("Creating LVM partition")
-        logger.info(self.HOSTVGDRIVE)
         self.physical_vols = []
         for drv in self.HOSTVGDRIVE.strip(",").split(","):
+            drv = translate_multipath_device(drv)
             if drv != "":
                 if self.ROOTDRIVE == drv:
+                    self.reread_partitions(self.ROOTDRIVE)
                     parted_cmd = "parted \"" + drv + "\" -s \"mkpart primary ext2 "+ str(self.RootBackup_end) +"M -1\""
                     logger.debug(parted_cmd)
                     system(parted_cmd)
@@ -332,6 +337,11 @@ class Storage:
                     system(parted_cmd)
                     hostvgpart="2"
                     self.ROOTDRIVE = self.BOOTDRIVE
+                elif self.ISCSIDRIVE == drv:
+                    parted_cmd = "parted \"" + drv + "\" -s \"mkpart primary ext2 512M -1\""
+                    logger.debug(parted_cmd)
+                    system(parted_cmd)
+                    hostvgpart="3"
                 else:
                     system("parted \""+ drv +"\" -s \"mklabel "+self.LABEL_TYPE+"\"")
                     parted_cmd = "parted \""+ drv + "\" -s \"mkpart primary ext2 1M -1 \""
@@ -360,9 +370,15 @@ class Storage:
         logger.debug(self.physical_vols)
         for partpv in self.physical_vols:
             logger.info("Creating physical volume on " + partpv)
-            if not os.path.exists(partpv):
+            for drv in self.HOSTVGDRIVE.strip(",").split(","):
+                self.reread_partitions(drv)
+            i = 0
+            while not os.path.exists(partpv):
                 logger.error(partpv + "is not available!")
-                return False
+                i = i + i
+                time.sleep(1)
+                if i == 15:
+                    return False
             if not system("dd if=/dev/zero of=\"" + partpv + "\" bs=1024k count=1"):
                 logger.error("Failed to wipe lvm partition")
                 return False
@@ -425,6 +441,39 @@ class Storage:
             logger.info("Mounting data partition")
             mount_data()
         logger.info("Completed HostVG Setup!")
+        return True
+
+    def create_iscsiroot(self):
+        logger.info("Partitioning iscsi root drive: " + self.ISCSIDRIVE)
+        wipe_partitions(self.ISCSIDRIVE)
+        self.reread_partitions(self.ISCSIDRIVE)
+        logger.info("Labeling Drive: " + self.ISCSIDRIVE)
+        parted_cmd = "parted \""+ self.ISCSIDRIVE +"\" -s \"mklabel "+ self.LABEL_TYPE+"\""
+        logger.debug(parted_cmd)
+        system(parted_cmd)
+        logger.debug("Creating Root and RootBackup Partitions")
+        parted_cmd = "parted \"" + self.ISCSIDRIVE + "\" -s \"mkpart primary ext2 1M 256M\""
+        logger.debug(parted_cmd)
+        system(parted_cmd)
+        parted_cmd = "parted \"" + self.ISCSIDRIVE + "\" -s \"mkpart primary ext2 256M 512M\""
+        logger.debug(parted_cmd)
+        system(parted_cmd)
+        # sleep to ensure filesystems are created before continuing
+        time.sleep(5)
+        # force reload some cciss devices will fail to mkfs
+        system("multipath -r")
+        self.reread_partitions(self.ISCSIDRIVE)
+        partroot = self.ISCSIDRIVE + "1"
+        partrootbackup = self.ISCSIDRIVE + "2"
+        if not os.path.exists(partroot):
+            partroot = self.ISCSIDRIVE + "p1"
+            partrootbackup= self.ISCSIDRIVE + "p2"
+        system("ln -snf \""+partroot+"\" /dev/disk/by-label/Root")
+        system("mke2fs \""+partroot+"\" -L Root")
+        system("tune2fs -c 0 -i 0 \""+partroot+"\"")
+        system("ln -snf \""+partrootbackup+"\" /dev/disk/by-label/RootBackup")
+        system("mke2fs \""+partrootbackup+"\" -L RootBackup")
+        system("tune2fs -c 0 -i 0 \""+partrootbackup+"\"")
         return True
 
     def create_appvg(self):
@@ -499,13 +548,20 @@ class Storage:
             return True
 
     def perform_partitioning(self):
-        if self.HOSTVGDRIVE is None and OVIRT_VARS["OVIRT_ISCSI_ENABLED"] != "y":
+        if self.HOSTVGDRIVE is None and not is_iscsi_install():
             logger.error("\nNo storage device selected.")
             return False
 
-        if self.BOOTDRIVE is None and OVIRT_VARS["OVIRT_ISCSI_ENABLED"] == "y":
+        if self.BOOTDRIVE is None and is_iscsi_install():
             logger.error("No storage device selected.")
             return False
+
+        if has_fakeraid(self.HOSTVGDRIVE):
+            if not handle_fakeraid(self.HOSTVGDRIVE):
+                return False
+        if has_fakeraid(self.ROOTDRIVE):
+            if not handle_fakeraid(self.ROOTDRIVE):
+                return False
 
         logger.info("Saving parameters")
         unmount_config("/etc/default/ovirt")
@@ -517,26 +573,58 @@ class Storage:
         self.wipe_lvm_on_disk(self.HOSTVGDRIVE)
         logger.info("Wiping LVM on ROOTDRIVE %s" % self.ROOTDRIVE)
         self.wipe_lvm_on_disk(self.ROOTDRIVE)
+        logger.info("Wiping LVM on BOOTDRIVE %s" % self.BOOTDRIVE)
+        self.wipe_lvm_on_disk(self.BOOTDRIVE)
         self.boot_size_si = self.BOOT_SIZE * (1024 * 1024) / (1000 * 1000)
-        if OVIRT_VARS.has_key("OVIRT_ISCSI_ENABLED") and OVIRT_VARS["OVIRT_ISCSI_ENABLED"] == "y":
-            logger.info("iSCSI enabled, partitioning boot drive: $BOOTDRIVE")
+        if is_iscsi_install():
+            # login to target and setup disk"
+            get_targets = "iscsiadm -m discovery -p %s:%s -t sendtargets" % (OVIRT_VARS["OVIRT_ISCSI_TARGET_HOST"],OVIRT_VARS["OVIRT_ISCSI_TARGET_PORT"])
+            system(get_targets)
+            before_login_drvs = self.get_dev_name()
+            logger.debug(before_login_drvs)
+            login_cmd = "iscsiadm -m node -T %s -p %s:%s -l" % (OVIRT_VARS["OVIRT_ISCSI_TARGET_NAME"], OVIRT_VARS["OVIRT_ISCSI_TARGET_HOST"], OVIRT_VARS["OVIRT_ISCSI_TARGET_PORT"])
+            system(login_cmd)
+            system("multipath -r")
+            after_login_drvs = self.get_dev_name()
+            logger.debug(after_login_drvs)
+            logger.info("iSCSI enabled, partitioning boot drive: %s" % self.BOOTDRIVE)
             wipe_partitions(self.BOOTDRIVE)
-            reread_partitions(self.BOOTDRIVE)
+            self.reread_partitions(self.BOOTDRIVE)
             logger.info("Creating boot partition")
-            system("parted \""+ self.BOOTDRIVE+"\" -s \"mklabel "+self.LABEL_TYPE+"\"")
-            system("parted \""+self.BOOTDRIVE+"\" -s \"mkpartfs primary ext2 1M "+self.boot_size_si+"M\"")
-            reread_partitions(self.BOOTDRIVE)
+            parted_cmd="parted %s -s \"mklabel %s\"" % (self.BOOTDRIVE, self.LABEL_TYPE)
+            system(parted_cmd)
+            parted_cmd="parted \"%s\" -s \"mkpart primary ext2 1M 256M\"" % self.BOOTDRIVE
+            system(parted_cmd)
+            parted_cmd="parted \"%s\" -s \"mkpart primary ext2 256M 512M\"" % self.BOOTDRIVE
+            system(parted_cmd)
+            parted_cmd = "parted \""+self.BOOTDRIVE+"\" -s \"set 1 boot on\""
+            system(parted_cmd)
+            self.reread_partitions(self.BOOTDRIVE)
             partboot= self.BOOTDRIVE + "1"
             if not os.path.exists(partboot):
+                logger.debug("%s does not exist" % partboot)
                 partboot = self.BOOTDRIVE + "p1"
+            partbootbackup= self.BOOTDRIVE + "2"
+            if not os.path.exists(partbootbackup):
+                logger.debug("%s does not exist" % partbootbackup)
+                partbootbackup = self.BOOTDRIVE + "p2"
             # sleep to ensure filesystems are created before continuing
+            system("udevadm settle")
             time.sleep(10)
             system("mke2fs \""+str(partboot)+"\" -L Boot")
             system("tune2fs -c 0 -i 0 \""+str(partboot)+"\"")
-            if OVIRT_VARS["OVIRT_ISCSI_HOSTVG"] == "y":
-                self.create_hostvg()
-            logger.info("Completed!")
-            return
+            system("ln -snf \""+partboot+"\" /dev/disk/by-label/Boot")
+            system("mke2fs \""+str(partbootbackup)+"\" -L BootBackup")
+            system("tune2fs -c 0 -i 0 \""+str(partbootbackup)+"\"")
+            system("ln -snf \""+partbootbackup+"\" /dev/disk/by-label/BootBackup")
+            self.ISCSIDRIVE =  translate_multipath_device(OVIRT_VARS["OVIRT_ISCSI_INIT"])
+            logger.debug(self.ISCSIDRIVE)
+            if self.create_iscsiroot():
+                logger.info("iSCSI Root Partitions Created")
+                if self.create_hostvg():
+                    logger.info("Completed!")
+                    return True
+
         if OVIRT_VARS.has_key("OVIRT_ROOT_INSTALL") and OVIRT_VARS["OVIRT_ROOT_INSTALL"] == "y":
             logger.info("Partitioning root drive: " + self.ROOTDRIVE)
             wipe_partitions(self.ROOTDRIVE)
@@ -549,18 +637,25 @@ class Storage:
             # efi partition should at 0M
             if is_efi_boot():
                 efi_start = 0
+                parted_cmd = "parted \"" + self.ROOTDRIVE + "\" -s \"mkpart EFI " + str(efi_start) + "M " + str(self.EFI_SIZE)+"M\""
+                logger.debug(parted_cmd)
+                system(parted_cmd)
             else:
                 efi_start = 1
-            parted_cmd = "parted \"" + self.ROOTDRIVE + "\" -s \"mkpart EFI " + str(efi_start) + "M " + str(self.EFI_SIZE)+"M\""
-            logger.debug(parted_cmd)
-            system(parted_cmd)
+                # create partition labeled bios_grub
+                parted_cmd = "parted \"" + self.ROOTDRIVE + "\" -s \"mkpart primary " + str(efi_start) + "M " + str(self.EFI_SIZE)+"M\""
+                logger.debug(parted_cmd)
+                system(parted_cmd)
+                parted_cmd = "parted \"" + self.ROOTDRIVE + "\" -s \"set 1 bios_grub on\""
+                logger.debug(parted_cmd)
+                system(parted_cmd)
             parted_cmd = "parted \"" + self.ROOTDRIVE + "\" -s \"mkpart primary ext2 "+str(self.EFI_SIZE)+"M "+ str(self.Root_end)+"M\""
             logger.debug(parted_cmd)
             system(parted_cmd)
             parted_cmd = "parted \""+self.ROOTDRIVE+"\" -s \"mkpart primary ext2 "+str(self.Root_end)+"M "+str(self.RootBackup_end)+"M\""
             logger.debug(parted_cmd)
             system(parted_cmd)
-            parted_cmd = "parted \""+self.ROOTDRIVE+"\" -s \"set 1 boot on\""
+            parted_cmd = "parted \""+self.ROOTDRIVE+"\" -s \"set 2 boot on\""
             logger.debug(parted_cmd)
             system(parted_cmd)
             # sleep to ensure filesystems are created before continuing
@@ -575,8 +670,9 @@ class Storage:
                 partefi = self.ROOTDRIVE + "p1"
                 partroot = self.ROOTDRIVE + "p2"
                 partrootbackup= self.ROOTDRIVE + "p3"
-            system("ln -snf \""+partefi+"\" /dev/disk/by-label/EFI")
-            system("mkfs.vfat \""+partefi+"\" -n EFI -F32")
+            if is_efi_boot():
+                system("ln -snf \""+partefi+"\" /dev/disk/by-label/EFI")
+                system("mkfs.vfat \""+partefi+"\" -n EFI -F32")
             system("ln -snf \""+partroot+"\" /dev/disk/by-label/Root")
             system("mke2fs \""+partroot+"\" -L Root")
             system("tune2fs -c 0 -i 0 \""+partroot+"\"")
@@ -584,6 +680,7 @@ class Storage:
             system("mke2fs \""+partrootbackup+"\" -L RootBackup")
             system("tune2fs -c 0 -i 0 \""+partrootbackup+"\"")
         hostvg1=self.HOSTVGDRIVE.split(",")[0]
+        self.reread_partitions(self.ROOTDRIVE)
         if self.ROOTDRIVE != hostvg1 :
             system("parted \"" + hostvg1 +"\" -s \"mklabel " + self.LABEL_TYPE + "\"")
         if self.create_hostvg():
@@ -602,7 +699,7 @@ class Storage:
         if self.DATA_SIZE == -1 :
             min_data_size=5
 
-        if OVIRT_VARS.has_key("OVIRT_ISCSI_ENABLED"):
+        if is_iscsi_install():
             BOOTDRIVESPACE = self.get_drive_size(self.BOOTDRIVE)
             drive_list.append("BOOT")
             drive_space_dict["BOOTDRIVESPACE"] = BOOTDRIVESPACE
@@ -642,9 +739,30 @@ class Storage:
             else:
                 logger.info("Required Space : " + str(drive_need_size) + "MB")
 
+def wipe_fakeraid(device):
+    dmraid_cmd = "echo y | dmraid -rE $(readlink -f \"%s\")" % device
+    dmraid=subprocess.Popen(dmraid_cmd, stdout=PIPE, stderr=STDOUT, shell=True)
+    dmraid.communicate()
+    dmraid.poll()
+    if dmraid.returncode == 0:
+        return True
+    else:
+        return False
+
+def handle_fakeraid(device):
+    if is_wipe_fakeraid():
+        return wipe_fakeraid(device)
+    #don't wipe fakeraid
+    logger.error("Fakeraid metadata detected on %s, Aborting install." % device)
+    logger.error("If you want auto-install to wipe the fakeraid metadata automatically,")
+    logger.error("then boot with the wipe-fakeraid option on the kernel commandline.")
+    return False
+
 def storage_auto():
     storage = Storage()
     if not OVIRT_VARS["OVIRT_INIT"] == "":
+        #force root install variable for autoinstalls
+        OVIRT_VARS["OVIRT_ROOT_INSTALL"] = "y"
         if storage.perform_partitioning():
             return True
         else:

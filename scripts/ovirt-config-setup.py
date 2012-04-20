@@ -35,6 +35,7 @@ from ovirtnode.log import *
 from ovirtnode.network import *
 from ovirtnode.kdump import *
 from ovirtnode.iscsi import *
+from ovirtnode.snmp import *
 
 OK_BUTTON = "OK"
 BACK_BUTTON = "Back"
@@ -51,14 +52,16 @@ LOG_OFF_BUTTON = "Log Off"
 login_password = ""
 
 STATUS_PAGE = 1
-NETWORK_PAGE = 3
-AUTHENTICATION_PAGE = 5
-LOGGING_PAGE = 7
-KDUMP_PAGE = 9
-LAST_OPTION = REMOTE_STORAGE_PAGE = 11
+NETWORK_PAGE = 2
+AUTHENTICATION_PAGE = 3
+KEYBOARD_PAGE = 4
+SNMP_PAGE = 5
+LOGGING_PAGE = 6
+KDUMP_PAGE = 7
+LAST_OPTION = REMOTE_STORAGE_PAGE = 8
 # max. 3 plugin menu options/pages: 13,15,17
-FIRST_PLUGIN_PAGE = 13
-LAST_PLUGIN_PAGE = 17
+FIRST_PLUGIN_PAGE = 9
+LAST_PLUGIN_PAGE = 13
 #
 NETWORK_DETAILS_PAGE = 19
 SUPPORT_PAGE = 21
@@ -79,7 +82,7 @@ class NodeConfigScreen():
       """
 
       def __init__(self):
-            self.__colorset = {
+        _console_colorset = {
                         "ROOT"           : ("gray",  "magenta"),
                         "BORDER"         : ("magenta", "magenta"),
                         "WINDOW"         : ("magenta", "magenta"),
@@ -101,10 +104,30 @@ class NodeConfigScreen():
                          "CHECKBOX"      : ("black",  "red"),
                          "ACTCHECKBOX"   : ("blue", "white")
                          }
-            self.__current_page = 1
-            self.__finished = False
-            self.__nic_config_failed = 0
-            self.net_apply_config = 0
+        _alternate_colorset = {
+                        "ROOT"          : ("white",  "white"),
+                        "HELPLINE"      : ("white",  "white"),
+                        "SHADOW"        : ("white",  "white"),
+                        "BORDER"        : ("white", "white"),
+                        "ACTBUTTON"     : ("white",  "blue"),
+                        "BUTTON"        : ("blue",  "white"),
+                        "TITLE"         : ("white",  "blue"),
+                        "EMPTYSCALE"    : ("white",  "cyan"),
+                        "FULLSCALE"     : ("black",  "white"),
+                        "CHECKBOX"      : ("blue",  "white"),
+                        "ROOTTEXT"      : ("white",  "blue"),
+                        "ACTSELLISTBOX" : ("white",  "black"),
+                        "LABEL"         : ("black",  "white"),
+                         }
+
+        if is_console():
+            self.__colorset = _console_colorset
+        else:
+            self.__colorset = _alternate_colorset
+        self.__current_page = 1
+        self.__finished = False
+        self.__nic_config_failed = 0
+        self.net_apply_config = 0
 
       def _set_title(self):
           PRODUCT_TITLE = "%s %s-%s" % (PRODUCT_SHORT, PRODUCT_VERSION, PRODUCT_RELEASE)
@@ -121,8 +144,9 @@ class NodeConfigScreen():
 
       def _create_warn_screen(self):
           self._create_blank_screen()
-          self.screen.setColor("BUTTON", "black", "red")
-          self.screen.setColor("ACTBUTTON", "blue", "white")
+          if is_console():
+              self.screen.setColor("BUTTON", "black", "red")
+              self.screen.setColor("ACTBUTTON", "blue", "white")
 
       def set_console_colors(self):
           self.existing_color_array = None
@@ -169,21 +193,22 @@ class NodeConfigScreen():
           fcntl.ioctl(tty_file.fileno(), PIO_CMAP, bytes(color_array))
 
       def restore_console_colors(self):
-          if self.existing_color_array == None:
-            return
-          tty_file = None
-          try:
-            tty_file = open("/dev/tty", "rw")
-          except:
-            pass
-          if tty_file == None:
-            tty_file = open("/dev/console", "rw")
-          try:
-              self._restore_colors(tty_file)
-          except:
-              pass
-          finally:
-              tty_file.close()
+          if is_console():
+              if self.existing_color_array == None:
+                return
+              tty_file = None
+              try:
+                tty_file = open("/dev/tty", "rw")
+              except:
+                pass
+              if tty_file == None:
+                tty_file = open("/dev/console", "rw")
+              try:
+                  self._restore_colors(tty_file)
+              except:
+                  pass
+              finally:
+                  tty_file.close()
 
       def _restore_colors(self, tty_file):
           GIO_CMAP = 0x4B70
@@ -202,6 +227,10 @@ class NodeConfigScreen():
                 return self.network_configuration_page(screen)
             if page == AUTHENTICATION_PAGE :
                 return self.authentication_configuration_page(screen)
+            if page == KEYBOARD_PAGE:
+                return self.keyboard_configuration_page(screen)
+            if page == SNMP_PAGE:
+                return self.snmp_configuration_page(screen)
             if page == LOGGING_PAGE :
                 return self.logging_configuration_page(screen)
             if page == KDUMP_PAGE :
@@ -219,7 +248,7 @@ class NodeConfigScreen():
             for p in self.plugins :
                 if page == plugin_page:
                     return p.form()
-                plugin_page+=2
+                plugin_page+=1
                 if plugin_page > LAST_PLUGIN_PAGE :
                     # should not happen
                     return None
@@ -251,8 +280,7 @@ class NodeConfigScreen():
                    if not is_valid_ipv6(self.dns_host1.value()):
                        warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP Address", buttons = ['Ok'])
               self.dns_host1.set("")
               self.reset_screen_colors()
@@ -265,8 +293,7 @@ class NodeConfigScreen():
                    if not is_valid_ipv6(self.dns_host1.value()):
                        warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP Address", buttons = ['Ok'])
               self.dns_host2.set("")
               self.reset_screen_colors()
@@ -280,8 +307,7 @@ class NodeConfigScreen():
                        if not is_valid_hostname(self.ntp_host1.value()):
                            warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP Address", buttons = ['Ok'])
               self.ntp_host1.set("")
               self.reset_screen_colors()
@@ -295,8 +321,7 @@ class NodeConfigScreen():
                        if not is_valid_hostname(self.ntp_host2.value()):
                            warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP Address", buttons = ['Ok'])
               self.ntp_host2.set("")
               self.reset_screen_colors()
@@ -308,8 +333,7 @@ class NodeConfigScreen():
                if not is_valid_ipv4(self.ipv4_netdevip.value()):
                    warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP Address", buttons = ['Ok'])
               self.ipv4_netdevip.set("")
               self.reset_screen_colors()
@@ -321,8 +345,7 @@ class NodeConfigScreen():
                if not is_valid_ipv4(self.ipv4_netdevmask.value()):
                    warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP Address", buttons = ['Ok'])
               self.ipv4_netdevmask.set("")
               self.reset_screen_colors()
@@ -334,8 +357,7 @@ class NodeConfigScreen():
                if not is_valid_ipv4(self.ipv4_netdevgateway.value()):
                    warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP Address", buttons = ['Ok'])
               self.ipv4_netdevgateway.set("")
               self.reset_screen_colors()
@@ -406,8 +428,7 @@ class NodeConfigScreen():
                if not is_valid_ipv6(self.ipv6_netdevip.value()):
                    warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP Address", buttons = ['Ok'])
               self.ipv6_netdevip.set("")
               self.reset_screen_colors()
@@ -422,8 +443,7 @@ class NodeConfigScreen():
               except:
                   warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IPv6 Netmask", buttons = ['Ok'])
               self.ipv6_netdevmask.set("")
               self.reset_screen_colors()
@@ -435,8 +455,7 @@ class NodeConfigScreen():
                if not is_valid_ipv6(self.ipv6_netdevgateway.value()):
                    warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP Address", buttons = ['Ok'])
               self.ipv6_netdevgateway.set("")
               self.reset_screen_colors()
@@ -452,8 +471,7 @@ class NodeConfigScreen():
               warn = 1
           finally:
               if warn == 1:
-                  self.screen.setColor("BUTTON", "black", "red")
-                  self.screen.setColor("ACTBUTTON", "blue", "white")
+                  self._create_warn_screen()
                   ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid VLAN ID", buttons = ['Ok'])
                   self.reset_screen_colors()
                   self.netvlanid.set("")
@@ -464,22 +482,19 @@ class NodeConfigScreen():
 
       def valid_logrotate_max_size_callback(self):
           if not self.logrotate_max_size.value().isdigit():
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid Log File Size", buttons = ['Ok'])
               self.reset_screen_colors()
 
       def valid_syslog_port_callback(self):
           if not is_valid_port(self.syslog_port.value()):
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid Port Number", buttons = ['Ok'])
               self.reset_screen_colors()
 
       def valid_syslog_server_callback(self):
           if not is_valid_host_or_ip(self.syslog_server.value()):
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid Hostname or Address", buttons = ['Ok'])
               self.reset_screen_colors()
 
@@ -491,8 +506,7 @@ class NodeConfigScreen():
 
       def kdump_valid_nfs_callback(self):
           if not is_valid_nfs(self.kdump_nfs_config.value()):
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid NFS Entry", buttons = ['Ok'])
               self.reset_screen_colors()
 
@@ -504,8 +518,7 @@ class NodeConfigScreen():
 
       def kdump_valid_ssh_callback(self):
           if not is_valid_user_host(self.kdump_ssh_config.value()):
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid SSH Entry", buttons = ['Ok'])
               self.reset_screen_colors()
 
@@ -517,31 +530,27 @@ class NodeConfigScreen():
 
       def valid_netconsole_server_callback(self):
           if not is_valid_host_or_ip(self.netconsole_server.value()):
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid NetConsole Hostname or Address", buttons = ['Ok'])
               self.reset_screen_colors()
 
       def valid_netconsole_server_port_callback(self):
           if not is_valid_port(self.netconsole_server_port.value()):
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid NetConsole Server Port", buttons = ['Ok'])
               self.reset_screen_colors()
 
       def valid_hostname_callback(self):
           if not self.net_hostname.value() == "":
               if not is_valid_hostname(self.net_hostname.value()):
-                  self.screen.setColor("BUTTON", "black", "red")
-                  self.screen.setColor("ACTBUTTON", "blue", "white")
+                  self._create_warn_screen()
                   ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid Hostname", buttons = ['Ok'])
                   self.reset_screen_colors()
 
       def valid_iqn_callback(self):
           if not self.iscsi_initiator_config.value() =="":
               if not is_valid_iqn(self.iscsi_initiator_config.value()):
-                  self.screen.setColor("BUTTON", "black", "red")
-                  self.screen.setColor("ACTBUTTON", "blue", "white")
+                  self._create_warn_screen()
                   ButtonChoiceWindow(self.screen, "Configuration Check", "Invalid IQN Format", buttons = ['Ok'])
                   self.reset_screen_colors()
 
@@ -569,8 +578,7 @@ class NodeConfigScreen():
                    if not is_valid_ipv6(self.dns_host2.value()):
                            warn = 1
           if warn == 1:
-              self.screen.setColor("BUTTON", "black", "red")
-              self.screen.setColor("ACTBUTTON", "blue", "white")
+              self._create_warn_screen()
               ButtonChoiceWindow(self.screen, "Network", "Invalid IP/Hostname", buttons = ['Ok'])
               self.reset_screen_colors()
           return
@@ -696,14 +704,20 @@ class NodeConfigScreen():
                 main_grid.setField(self.hwvirt, 0, 3, anchorLeft = 1, padding=(0,1,0,0))
             else:
                 main_grid.setField(running_vms_grid, 0, 3, anchorLeft = 1, padding=(0,0,0,0))
+
             help_text = Textbox(62, 1, "Press F8 For Support Menu")
             main_grid.setField(help_text, 0, 4, anchorLeft = 1, padding=(0,0,0,0))
+
+            self.ssh_hostkey_btn = CompactButton("View Host Key")
+            main_grid.setField(self.ssh_hostkey_btn, 0, 5, anchorLeft = 1, padding=(1,1,0,0))
+
             return [Label(""), main_grid]
 
       def logging_configuration_page(self, screen):
           elements = Grid(2, 8)
           heading = Label("Logging")
-          heading.setColors(customColorset(1))
+          if is_console():
+              heading.setColors(customColorset(1))
           elements.setField(heading, 0, 0, anchorLeft = 1)
           logrotate_grid = Grid(2,2)
           logrotate_grid.setField(Label("  Logrotate Max Log Size (KB): "), 0, 0, anchorLeft = 1)
@@ -760,7 +774,8 @@ class NodeConfigScreen():
       def authentication_configuration_page(self, screen):
           elements = Grid(2, 9)
           heading = Label("Remote Access")
-          heading.setColors(customColorset(1))
+          if is_console():
+              heading.setColors(customColorset(1))
           elements.setField(heading, 0, 0, anchorLeft = 1)
           pw_elements = Grid (3,3)
           self.current_ssh_pwd_status = augtool_get("/files/etc/ssh/sshd_config/PasswordAuthentication")
@@ -771,7 +786,8 @@ class NodeConfigScreen():
           self.ssh_passwd_status = Checkbox("Enable ssh password authentication", isOn=self.current_ssh_pwd_status)
           elements.setField(self.ssh_passwd_status, 0, 1, anchorLeft = 1)
           local_heading = Label("Local Access")
-          local_heading.setColors(customColorset(1))
+          if is_console():
+              local_heading.setColors(customColorset(1))
           elements.setField(local_heading, 0, 3, anchorLeft = 1, padding = (0,2,0,0))
           elements.setField(Label(" "), 0, 6)
           pw_elements.setField(Label("Password: "), 0, 1, anchorLeft = 1)
@@ -788,6 +804,8 @@ class NodeConfigScreen():
           return [Label(""), elements]
 
       def network_configuration_page(self, screen):
+          self.network_config_fields = []
+          aug.load()
           grid = Grid(2,15)
           self.heading = Label("System Identification")
           grid.setField(self.heading, 0, 1, anchorLeft = 1)
@@ -796,12 +814,14 @@ class NodeConfigScreen():
           self.current_hostname = os.uname()[1]
           hostname = os.uname()[1]
           self.net_hostname = Entry(35, hostname)
+          self.network_config_fields += [self.net_hostname]
           self.net_hostname.setCallback(self.valid_hostname_callback)
           self.ntp_dhcp = 0
           hostname_grid.setField(self.net_hostname, 1, 1, anchorLeft = 1, padding=(0,0,0,0))
           grid.setField(hostname_grid, 0, 3, anchorLeft=1)
           dns_grid = Grid(2,2)
           self.dns_host1 = Entry(25)
+          self.network_config_fields += [self.dns_host1]
           self.dns_host1.setCallback(self.dns_host1_callback)
           self.current_dns_host1 = augtool_get("/files/etc/resolv.conf/nameserver[1]")
           if self.current_dns_host1:
@@ -809,6 +829,7 @@ class NodeConfigScreen():
           else:
               self.dns_host1.set("")
           self.dns_host2 = Entry(25)
+          self.network_config_fields += [self.dns_host2]
           self.dns_host2.setCallback(self.dns_host2_callback)
           self.current_dns_host2 = augtool_get("/files/etc/resolv.conf/nameserver[2]")
           if self.current_dns_host2:
@@ -824,9 +845,11 @@ class NodeConfigScreen():
           grid.setField(Label("  "), 0, 7)
           ntp_grid = Grid(2,2)
           self.ntp_host1 = Entry(25)
+          self.network_config_fields += [self.ntp_host1]
           self.ntp_host1.setCallback(self.ntp_host1_callback)
 
           self.ntp_host2 = Entry(25)
+          self.network_config_fields += [self.ntp_host2]
           self.ntp_host2.setCallback(self.ntp_host2_callback)
 
           self.current_ntp_host1 = augtool_get("/files/etc/ntp.conf/server[1]")
@@ -862,6 +885,13 @@ class NodeConfigScreen():
           if self.ntp_dhcp == 1:
               for item in self.ntp_host1, self.ntp_host2:
                   item.setFlags(_snack.FLAG_DISABLED, _snack.FLAGS_SET)
+
+          self.original_system_network_config = self.get_tui_field_network_config()
+          if (hasattr(self, "preset_network_config") 
+              and self.preset_network_config is not None):
+              for field, value in zip(self.network_config_fields, self.preset_network_config):
+                  field.set(value)
+
           return [Label(""),
                   grid]
 
@@ -1043,8 +1073,11 @@ class NodeConfigScreen():
           vlan_grid = Grid(2,2)
           self.netvlanid = Entry(4, "", scroll = 0)
           self.netvlanid.setCallback(self.netvlanid_callback)
-          if "OVIRT_VLAN" in OVIRT_VARS:
-              self.netvlanid.set(OVIRT_VARS["OVIRT_VLAN"])
+          for vlan in os.listdir("/proc/net/vlan/"):
+            # XXX wrong match e.g. eth10.1 with eth1
+            if self.nic_lb.current() in vlan:
+              vlan_id = vlan.replace(self.nic_lb.current()+".","")
+              self.netvlanid.set(vlan_id)
           vlan_grid.setField(Label("VLAN ID: "), 0, 0, anchorLeft = 1)
           vlan_grid.setField(self.netvlanid, 1, 0)
           grid.setField(vlan_grid, 0, 9, anchorLeft = 1)
@@ -1071,10 +1104,78 @@ class NodeConfigScreen():
               pass
           return [Label(""),
                   grid]
+
+      def snmp_configuration_page(self, screen):
+          elements = Grid(2, 9)
+          heading = Label("SNMP")
+          if is_console():
+              heading.setColors(customColorset(1))
+          elements.setField(heading, 0, 0, anchorLeft = 1)
+          pw_elements = Grid (3,3)
+          self.current_snmp_status = 0
+          if os.path.exists("/etc/snmp/snmpd.conf"):
+              f = open("/etc/snmp/snmpd.conf")
+              for line in f:
+                  if "createUser" in line:
+                      self.current_snmp_status = 1
+              f.close()
+          self.snmp_status = Checkbox("Enable SNMP", isOn=self.current_snmp_status)
+          elements.setField(self.snmp_status, 0, 1, anchorLeft = 1)
+          local_heading = Label("SNMP Password")
+          if is_console():
+              local_heading.setColors(customColorset(1))
+          elements.setField(local_heading, 0, 3, anchorLeft = 1, padding = (0,2,0,0))
+          elements.setField(Label(" "), 0, 6)
+          pw_elements.setField(Label("Password: "), 0, 1, anchorLeft = 1)
+          pw_elements.setField(Label("Confirm Password: "), 0, 2, anchorLeft = 1)
+          self.root_password_1 = Entry(15,password = 1)
+          self.root_password_1.setCallback(self.password_check_callback)
+          self.root_password_2 = Entry(15,password = 1)
+          self.root_password_2.setCallback(self.password_check_callback)
+          pw_elements.setField(self.root_password_1, 1,1)
+          pw_elements.setField(self.root_password_2, 1,2)
+          self.pw_msg = Textbox(60, 6, "", wrap=1)
+          elements.setField(pw_elements, 0, 7, anchorLeft=1)
+          elements.setField(self.pw_msg, 0, 8, padding = (0,1,0,0))
+          return [Label(""), elements]
+
+
+      def keyboard_configuration_page(self, screen):
+          # placeholder for system-config-keyboard-base, will remove move later
+          try:
+              import system_config_keyboard.keyboard as keyboard
+          except:
+              return [Label(""), elements]
+
+          elements = Grid(2, 9)
+          heading = Label("Keyboard Layout Selection")
+          if is_console():
+              heading.setColors(customColorset(1))
+          self.kbd = keyboard.Keyboard()
+          self.kbd.read()
+          self.kbdDict = self.kbd.modelDict
+          self.kbdKeys = self.kbdDict.keys()
+          self.kbdKeys.sort()
+          self.kb_list = Listbox(10, scroll = 1, returnExit = 0)
+          default = ""
+          for kbd in self.kbdKeys:
+              if kbd == self.kbd.get():
+                  default = kbd
+              plainName = self.kbdDict[kbd][0]
+              self.kb_list.append(plainName, kbd)
+          try:
+              self.kb_list.setCurrent(default)
+          except:
+              pass
+          elements.setField(heading, 0, 0, anchorLeft = 1)
+          elements.setField(self.kb_list, 0, 1, anchorLeft = 1, padding=(1,1,0,3))
+          return [Label(""), elements]
+
       def kdump_configuration_page(self, screen):
           elements = Grid(2, 12)
           heading = Label("Kernel Dump")
-          heading.setColors(customColorset(1))
+          if is_console():
+              heading.setColors(customColorset(1))
           elements.setField(heading, 0, 0, anchorLeft = 1)
           if not network_up():
               elements.setField(Label(" * Network Down, Configuration Disabled * "), 0, 1, anchorLeft = 1)
@@ -1130,7 +1231,7 @@ class NodeConfigScreen():
       def support_page(self, screen):
           logger.info("Loading Support Page")
           elements = Grid(2, 8)
-          elements.setField(Label(" View Log Files "), 0, 1, anchorLeft = 1, padding = (0,1,0,0))
+          elements.setField(Label(" View Log Files "), 0, 1, anchorLeft = 1, padding = (0,1,0,1))
           self.log_menu_list = Listbox(5, width = 40, returnExit = 1, border = 0, showCursor = 0, scroll = 0)
           self.log_menu_list.append(" oVirt Log (ovirt.log)", "/var/log/ovirt.log")
           self.log_menu_list.append(" System Messages (messages)", "/var/log/messages")
@@ -1139,7 +1240,7 @@ class NodeConfigScreen():
               self.log_menu_list.append(" VDSM Log (vdsm.log)", "/var/log/vdsm/vdsm.log")
           if os.path.exists("/var/log/vdsm-reg/vdsm-reg.log"):
               self.log_menu_list.append(" VDSM Registration Log (vdsm-reg.log)", "/var/log/vdsm-reg/vdsm-reg.log")
-          elements.setField(self.log_menu_list, 0, 2, anchorLeft = 1, padding = (0,0,0,8))
+          elements.setField(self.log_menu_list, 0, 2, anchorLeft = 1, padding = (0,0,0,6))
           elements.setField(Label(" After viewing press \"q\" to quit "), 0, 3, anchorLeft = 1, padding = (0,1,0,0))
 
           return [Label(""), elements]
@@ -1147,7 +1248,8 @@ class NodeConfigScreen():
       def remote_storage_configuration_page(self, screen):
           elements = Grid(2, 8)
           heading = Label("Remote Storage")
-          heading.setColors(customColorset(1))
+          if is_console():
+              heading.setColors(customColorset(1))
           elements.setField(heading, 0, 0, anchorLeft = 1)
           elements.setField(Label(" "), 0, 1, anchorLeft = 1)
           elements.setField(Label("iSCSI Initiator Name:"), 0, 2, anchorLeft = 1)
@@ -1160,19 +1262,16 @@ class NodeConfigScreen():
           return [Label(""), elements]
 
       def menuSpacing(self):
-          menu_option = self.menu_list.current()
-          if menu_option > self.last_option:
-              self.menu_list.setCurrent(self.last_option)
-          elif menu_option % 2 == 0:
-              if self.menuo < menu_option:
-                  self.menu_list.setCurrent(menu_option+1)
-              else:
-                  self.menu_list.setCurrent(menu_option-1)
-          self.menuo = self.menu_list.current()
           if not self.__current_page == NETWORK_DETAILS_PAGE: # pages that dont use main listbox
               if self.menu_list.current() != self.__current_page:
                   self.__current_page = self.menu_list.current()
                   screen.start()
+
+      def get_tui_field_network_config(self):
+          return [ f.value() for f in self.network_config_fields ]
+
+      def is_same_network_config(self, a, b):
+          return all (x == y for x, y in zip(a, b))
 
       def process_network_config(self):
           network = Network()
@@ -1370,8 +1469,7 @@ class NodeConfigScreen():
               return
 
       def process_authentication_config(self):
-          self.screen.setColor("BUTTON", "black", "red")
-          self.screen.setColor("ACTBUTTON", "blue", "white")
+          self._create_warn_screen()
           ssh_restart = False
           if self.root_password_1.value() != "" or self.root_password_2.value() != "":
               if self.root_password_1.value() != self.root_password_2.value():
@@ -1399,6 +1497,13 @@ class NodeConfigScreen():
           ovirt_netconsole(self.netconsole_server.value(), self.netconsole_server_port.value())
           set_logrotate_size(self.logrotate_max_size.value())
           return True
+
+      def process_keyboard_config(self):
+          self.kbd.set(self.kb_list.current())
+          self.kbd.write()
+          self.kbd.activate()
+          # store keyboard config
+          ovirt_store_config("/etc/sysconfig/keyboard")
 
       def process_locked_screen(self):
           auth = PAM.pam()
@@ -1434,6 +1539,10 @@ class NodeConfigScreen():
               ret = self.process_logging_config()
           if self.__current_page == NETWORK_DETAILS_PAGE:
               ret = self.process_nic_config()
+          if self.__current_page == KEYBOARD_PAGE:
+              ret = self.process_keyboard_config()
+          if self.__current_page == SNMP_PAGE:
+              ret = self.process_snmp_config()
           if self.__current_page == KDUMP_PAGE:
               ret = self.process_kdump_config()
           if self.__current_page == REMOTE_STORAGE_PAGE:
@@ -1446,11 +1555,17 @@ class NodeConfigScreen():
               if self.__current_page == plugin_page:
                   ret = p.action()
                   break
-              plugin_page+=2
+              plugin_page+=1
               if plugin_page > LAST_PLUGIN_PAGE :
                   # should not happen
                   break
           return
+
+      def process_snmp_config(self):
+          if self.snmp_status.value() == 1:
+              enable_snmpd(self.root_password_1.value())
+          elif self.snmp_status.value() == 0:
+              disable_snmpd()
 
       def process_kdump_config(self):
           if self.kdump_nfs_type.value() == 1:
@@ -1472,11 +1587,28 @@ class NodeConfigScreen():
                   ovirt_store_config("/root/.ssh/config")
           if self.kdump_restore_type.value() == 1:
               restore_kdump_config()
-          ovirt_store_config("/etc/kdump.conf")
-          os.system("service kdump restart &> /dev/null")
+          if not system("service kdump restart"):
+              self._create_warn_screen()
+              ButtonChoiceWindow(self.screen, "KDump Status", "KDump configuration failed, location unreachable", buttons = ['Ok'])
+              self.reset_screen_colors()
+              unmount_config("/etc/kdump.conf")
+              if os.path.exists("/etc/kdump.conf"):
+                  os.remove("/etc/kdump.conf")
+          else:
+              ovirt_store_config("/etc/kdump.conf")
 
       def process_remote_storage_config(self):
           set_iscsi_initiator(self.iscsi_initiator_config.value())
+
+      def ssh_hostkey_btn_cb(self):
+            self._create_warn_screen()
+            ssh_hostkey_msg = "RSA Host Key Fingerprint:\n%s\n\nRSA Host Key:\n%s" % get_ssh_hostkey()
+            ButtonChoiceWindow(self.screen, "Host Key", ssh_hostkey_msg, buttons = ['Ok'])
+            self.reset_screen_colors()
+
+      def quit(self):
+            manual_teardown()
+            sys.exit(2)
 
       def start(self):
             self.plugins = []
@@ -1484,7 +1616,7 @@ class NodeConfigScreen():
             for imp,mod,ispkg in pkgutil.iter_modules(ovirt_config_setup.__path__, "ovirt_config_setup."):
                 module = __import__(mod, fromlist="dummy")
                 self.plugins.append(module.get_plugin(self))
-                self.last_option+=2
+                self.last_option+=1
 
             active = True
             # check for screenlock status
@@ -1494,47 +1626,41 @@ class NodeConfigScreen():
                 self._create_blank_screen()
                 screen = self.screen
                 # apply any colorsets that were provided.
-                self.set_console_colors()
-                screen.setColor(customColorset(1), "black", "magenta")
+                if is_console():
+                    self.set_console_colors()
+                    screen.setColor(customColorset(1), "black", "magenta")
                 if self.__current_page == STATUS_PAGE:
                     screen.pushHelpLine(" Use arrow keys to choose option, then press Enter to select it ")
                 else:
                     screen.pushHelpLine(" ")
                 elements = self.get_elements_for_page(screen, self.__current_page)
-                gridform = GridForm(screen, "", 2, 1) # 5,2
+                gridform = GridForm(screen, "", 2, 1)
                 self._set_title()
                 content = Grid(1, len(elements) + 3)
                 self.menuo = 1
-                self.menu_list = Listbox(16, width = 20, returnExit = 1, border = 0, showCursor = 0)
+                self.menu_list = Listbox(18, width = 20, returnExit = 0, border = 0, showCursor = 0)
                 self.menu_list.append(" Status", 1)
-                self.menu_list.append("", 2)
-                self.menu_list.append(" Network", 3)
-                self.menu_list.append("", 4)
-                self.menu_list.append(" Security", 5)
-                self.menu_list.append("", 6)
-                self.menu_list.append(" Logging", 7)
-                self.menu_list.append("", 8)
-                self.menu_list.append(" Kernel Dump", 9)
-                self.menu_list.append("", 10)
-                self.menu_list.append(" Remote Storage", 11)
-                self.menu_list.append("", 12)
+                self.menu_list.append(" Network", 2)
+                self.menu_list.append(" Security", 3)
+                self.menu_list.append(" Keyboard",4)
+                self.menu_list.append(" SNMP", 5)
+                self.menu_list.append(" Logging", 6)
+                self.menu_list.append(" Kernel Dump", 7)
+                self.menu_list.append(" Remote Storage", 8)
                 # plugin menu options
                 plugin_page=FIRST_PLUGIN_PAGE
                 for p in self.plugins :
                     self.menu_list.append(" " + p.label(), plugin_page)
-                    self.menu_list.append("", plugin_page+1)
-                    plugin_page+=2
+                    plugin_page+=1
                     if plugin_page > LAST_PLUGIN_PAGE :
                         # should not happen
                         raise "Too many plugins installed: max. %d are allowed." % ((LAST_PLUGIN_PAGE-FIRST_PLUGIN_PAGE)/2+1)
-                for filler in range(plugin_page, LAST_PLUGIN_PAGE):
-                    self.menu_list.append("", filler)
-                self.menu_list.setCallback(self.menuSpacing)
                 if self.__current_page != LOCKED_PAGE and self.__current_page != NETWORK_DETAILS_PAGE and self.__current_page != SUPPORT_PAGE:
                     self.menu_list.setCurrent(self.__current_page)
                 if not self.screen_locked:
                     if not self.__current_page == NETWORK_DETAILS_PAGE and not self.__current_page == SUPPORT_PAGE:
-                        gridform.add(self.menu_list, 0, 0, # was 1,0
+                        self.menu_list.setCallback(self.menuSpacing)
+                        gridform.add(self.menu_list, 0, 0,
                                      anchorTop = 1, anchorLeft = 1,
                                      growx = 0)
                 current_element = 0
@@ -1589,8 +1715,7 @@ class NodeConfigScreen():
                         warn_message= "There are %s Virtual Machines running\n\n" % str(self.dom_count)
                     else:
                         warn_message= "Unable to verify any running vms\n\n"
-                    self.screen.setColor("BUTTON", "black", "red")
-                    self.screen.setColor("ACTBUTTON", "blue", "white")
+                    self._create_warn_screen()
                     if pressed == IDENTIFY_BUTTON:
                         os.system("ethtool -p " + self.nic_lb.current() + " 10")
                     elif pressed == APPLY_BUTTON or pressed == UNLOCK_BUTTON:
@@ -1614,14 +1739,19 @@ class NodeConfigScreen():
                             os.system("/usr/bin/clear;shutdown -h now")
                     elif pressed == LOG_OFF_BUTTON:
                         # will exit and ovirt-admin-shell cleans up tty lockfile and drops to login
-                        sys.exit(2)
+                        self.quit()
+                    elif (result is self.ssh_hostkey_btn):
+                        self.ssh_hostkey_btn_cb()
+
                     if self.__current_page == LOCKED_PAGE:
                         self.screen_locked = True
                     elif result == "F8" and self.__current_page != LOCKED_PAGE:
                         self.__current_page = SUPPORT_PAGE
                     elif result == "F2" and self.__current_page != LOCKED_PAGE:
                         self._create_warn_screen()
-                        warn = ButtonChoiceWindow(self.screen, "Support Shell", "This is for troubleshooting with support representatives. Do not use this option without guidance from support.")
+                        title = "Shell Access"
+                        message = "This is a non persistent filesystem.  Any changes will be lost on reboot.  RPM installations may succeed, but changes will be lost when rebooted."
+                        warn = ButtonChoiceWindow(self.screen, title, message)
                         if warn == "ok":
                             screen.popWindow()
                             screen.finish()
@@ -1634,7 +1764,22 @@ class NodeConfigScreen():
                                 elif pressed == APPLY_BUTTON:
                                     self.__current_page == NETWORK_PAGE
                                 else:
-                                    self.__current_page = NETWORK_DETAILS_PAGE
+                                    # We want to enter the NIC details ...
+                                    warn = "ok"
+                                    current_network_config = self.get_tui_field_network_config()
+                                    if not self.is_same_network_config (self.original_system_network_config, current_network_config):
+                                        self._create_warn_screen()
+                                        title = "Confirm NIC Configuration"
+                                        message = "Unsaved network changes detected, save and continue to NIC configuration?"
+                                        warn = ButtonChoiceWindow(self.screen, title, message)
+                                    if warn == "ok":
+                                        # apply and continue
+                                        self.process_network_config()
+                                        self.__current_page = NETWORK_DETAILS_PAGE
+                                        self.preset_network_config = None
+                                    else:
+                                        # Do not apply, return
+                                        self.preset_network_config = current_network_config
                             else:
                                 self.__current_page = menu_choice
                             if self.net_apply_config == 1:
@@ -1662,8 +1807,7 @@ class NodeConfigScreen():
                         else:
                             self.__current_page = menu_choice
                 except Exception, error:
-                    self.screen.setColor("BUTTON", "black", "red")
-                    self.screen.setColor("ACTBUTTON", "blue", "white")
+                    self._create_warn_screen()
                     os.remove(lockfile)
                     ButtonChoiceWindow(screen,
                                        "An Exception Has Occurred",

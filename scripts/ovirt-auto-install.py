@@ -27,7 +27,6 @@ from ovirtnode.network import *
 from ovirtnode.log import *
 from ovirtnode.kdump import *
 from ovirtnode.snmp import *
-from ovirt_config_setup.collectd import *
 
 def config_networking():
    # network configuration
@@ -37,9 +36,14 @@ def config_networking():
     if OVIRT_VARS.has_key("OVIRT_HOSTNAME"):
         system("hostname %s" % OVIRT_VARS["OVIRT_HOSTNAME"])
 
+# setup network before storage for iscsi installs
+if is_iscsi_install():
+    config_networking()
+
 if not is_stateless():
     print "Performing automatic disk partitioning"
-    if storage_auto:
+
+    if storage_auto():
         print "Completed automatic disk partitioning"
         # store /etc/shadow if adminpw/rootpw are set, handled already in ovirt-early
         file = open("/proc/cmdline")
@@ -57,16 +61,21 @@ if not is_stateless():
 config_networking()
 #set ssh_passwd_auth
 if OVIRT_VARS.has_key("OVIRT_SSH_PWAUTH"):
-    if OVIRT_VARS["OVIRT_SSH_PWAUTH"] == 1:
+    if OVIRT_VARS["OVIRT_SSH_PWAUTH"] == "yes":
         augtool("set","/files/etc/ssh/sshd_config/PasswordAuthentication", "yes")
-    elif OVIRT_VARS["OVIRT_SSH_PWAUTH"] == 0:
+    elif OVIRT_VARS["OVIRT_SSH_PWAUTH"] == "no":
         augtool("set","/files/etc/ssh/sshd_config/PasswordAuthentication", "no")
+    os.system("service sshd restart &> /dev/null")
 
 # iscsi handled in install.py
 print "Configuring Logging"
 logging_auto()
-print "Configuring Collectd"
-collectd_auto()
+try:
+    from ovirt_config_setup.collectd import *
+    print "Configuring Collectd"
+    collectd_auto()
+except:
+    pass
 install = Install()
 print "Configuring KDump"
 kdump_auto()

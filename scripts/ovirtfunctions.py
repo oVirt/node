@@ -103,7 +103,9 @@ OVIRT_BACKUP_DIR="/var/lib/ovirt-backup"
 MANAGEMENT_SCRIPTS_DIR="/etc/node.d"
 
 def log(log_entry):
-    if is_firstboot():
+    if is_stateless():
+        log_file = open(OVIRT_LOGFILE, "a")
+    elif is_firstboot():
         log_file = open(OVIRT_TMP_LOGFILE, "a")
     else:
         log_file = open(OVIRT_LOGFILE, "a")
@@ -204,6 +206,20 @@ def get_ttyname():
             return tty
     return None
 
+def is_console():
+    # /dev/console only used during install
+    tty = get_ttyname()
+    if "console" in tty:
+        return True
+    # serial console
+    elif "ttyS" in tty:
+        return False
+    # local console
+    elif "tty" in tty:
+        return True
+    else:
+        return False
+
 def manual_setup():
     logger.info("Checking For Setup Lockfile")
     tty = get_ttyname()
@@ -211,6 +227,12 @@ def manual_setup():
         return True
     else:
         return False
+
+def manual_teardown():
+    logger.info("Removing Setup Lockfile")
+    tty = get_ttyname()
+    os.unlink("/tmp/ovirt-setup.%s" % tty)
+
 # was firstboot menu already shown?
 # state is stored in persistent config partition
 def is_firstboot():
@@ -225,6 +247,17 @@ def is_firstboot():
         return False
     else:
         return True
+
+def is_cim_enabled():
+    # check if theres a key first
+    # reload OVIRT_VARS
+    OVIRT_VARS = parse_defaults()
+    if OVIRT_VARS.has_key("OVIRT_CIM_ENABLED"):
+        if OVIRT_VARS["OVIRT_CIM_ENABLED"] == "1":
+            return True
+        elif OVIRT_VARS["OVIRT_CIM_ENABLED"] == "0":
+            return False
+    return False
 
 def is_stateless():
     # check if theres a key first
@@ -326,13 +359,11 @@ def ovirt_setup_anyterm():
 # PXE /dev/loop0 (loopback ISO)
 # not available when booted from local disk installation
 def mount_live():
-    ret = os.system('cat /proc/mounts|grep -q "none /live"')
-    if ret == 0:
-        os.system("umount /live")
-    live_dev="/dev/live"
-    if not os.path.exists(live_dev):
-        ret = os.system("losetup /dev/loop0|grep -q '\.iso'")
-        if ret == 0:
+    live_dev = ""
+    if system('cat /proc/mounts|grep -q "none /live"'):
+        system("umount /live")
+    if not os.path.exists("/dev/live"):
+        if system("losetup /dev/loop0|grep -q '\.iso'"):
             # PXE boot
             live_dev="/dev/loop0"
         else:
@@ -345,10 +376,14 @@ def mount_live():
             for device in client.query_by_subsystem("block"):
                 if device.has_property("ID_CDROM"):
                     dev = device.get_property("DEVNAME")
-                    blkid_cmd = "blkid '%s'|grep -q '%s'" % (dev, pkg_name)
-                    ret = os.system(blkid_cmd)
-                    if ret == 0:
+                    if system("blkid '%s'|grep -q '%s'" % (dev, pkg_name)):
                         live_dev = dev
+            if not live_dev:
+                # usb devices with LIVE label
+                live_dev = findfs("LIVE")
+    else:
+        live_dev="/dev/live"
+
     os.system("mkdir -p /live")
     os.system("mount -r " + live_dev + " /live &>/dev/null")
     if os.path.ismount("/live"):
@@ -802,6 +837,11 @@ def finish_install():
     hookdir="/etc/ovirt-config-boot.d"
     for hook in os.listdir(hookdir):
         os.system(os.path.join(hookdir,hook))
+    for f in ["/etc/ssh/ssh_host%s_key" % t for t in ["", "_dsa", "_rsa"]]:
+        ovirt_store_config(f)
+        ovirt_store_config("%s.pub" % f)
+    # store keyboard config
+    ovirt_store_config("/etc/sysconfig/keyboard")
     return True
 
 def is_valid_ipv4(ip_address):
@@ -1103,8 +1143,11 @@ def findfs(label):
     return blkid_output
 
 def system(command):
-    if os.system(command + " &>> " + OVIRT_TMP_LOGFILE) == 0:
-        os.system("echo '\n' >> " + OVIRT_TMP_LOGFILE)
+    system_cmd = subprocess.Popen(command, shell=True, stdout=PIPE, stderr=PIPE)
+    output, err = system_cmd.communicate()
+    logger.debug(command)
+    logger.debug(output)
+    if system_cmd.returncode == 0:
         return True
     else:
         return False
@@ -1154,6 +1197,14 @@ def get_virt_hw_status():
             hwvirt_msg = "(Virtualization hardware was not detected)"
     return hwvirt_msg
 
+def get_ssh_hostkey(variant="rsa"):
+    fn_hostkey = "/etc/ssh/ssh_host_%s_key.pub" % variant
+    hostkey = open(fn_hostkey).read ()
+    hostkey_fp_cmd = "ssh-keygen -l -f '%s'" % fn_hostkey
+    hostkey_fp_lookup = subprocess.Popen(hostkey_fp_cmd, shell=True, stdout=PIPE, stderr=STDOUT)
+    fingerprint = hostkey_fp_lookup.stdout.read().strip().split(" ")[1]
+    return (fingerprint, hostkey)
+
 def get_mac_address(dev):
     nic_addr_file = open("/sys/class/net/" + dev + "/address")
     dev_address = nic_addr_file.read().strip()
@@ -1174,6 +1225,31 @@ def logical_to_physical_networks():
             networks[dev_bridge] = (dev_interface,dev_address)
     return networks
 
+def has_fakeraid(device):
+    fakeraid_cmd = "dmraid -r $(readlink -f \"" + device + "\")"
+    fakeraid = subprocess.Popen(fakeraid_cmd, shell=True, stdout=PIPE, stderr=STDOUT)
+    fakeraid.communicate()
+    fakeraid.poll()
+    if fakeraid.returncode == 0:
+        return True
+    else:
+        return False
+
+def is_wipe_fakeraid():
+    OVIRT_VARS = parse_defaults()
+    # check if theres a key first
+    if "OVIRT_WIPE_FAKERAID" in OVIRT_VARS:
+        if OVIRT_VARS["OVIRT_WIPE_FAKERAID"] == "1":
+            return True
+        elif OVIRT_VARS["OVIRT_WIPE_FAKERAID"] == "0":
+            return False
+    return False
+
+def set_wipe_fakeraid(value):
+    augtool("set","/files/etc/default/ovirt/OVIRT_WIPE_FAKERAID",str(value))
+    OVIRT_VARS = parse_defaults()
+
+
 def pad_or_trim(length, string):
     to_rem = len(string) - length
     # if negative pad name space
@@ -1187,6 +1263,23 @@ def pad_or_trim(length, string):
 
 def is_efi_boot():
     if os.path.exists("/sys/firmware/efi"):
+        return True
+    else:
+        return False
+
+def manage_firewall_port(port, action="open", proto="tcp"):
+    if action == "open":
+        opt = "-A"
+        logger.info("Opening port " + port)
+    elif action == "close":
+        opt = "-D"
+        logger.info("Closing port " + port)
+    os.system("iptables %s INPUT -p %s --dport %s -j ACCEPT" % (opt, proto, port))
+    os.system("iptables-save")
+    ovirt_store_config("/etc/sysconfig/iptables")
+
+def is_iscsi_install():
+    if OVIRT_VARS.has_key("OVIRT_ISCSI_INSTALL") and OVIRT_VARS["OVIRT_ISCSI_INSTALL"].upper() == "Y":
         return True
     else:
         return False
@@ -1229,7 +1322,9 @@ class PluginBase(object):
 OVIRT_VARS = parse_defaults()
 
 # setup logging facility
-if is_firstboot():
+if is_stateless():
+    log_file = OVIRT_LOGFILE
+elif is_firstboot():
     log_file = OVIRT_TMP_LOGFILE
 else:
     log_file = OVIRT_LOGFILE

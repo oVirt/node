@@ -1,4 +1,5 @@
 audit
+dmraid
 bc
 cracklib-python
 ethtool
@@ -53,7 +54,6 @@ setools-console
 -libselinux-python
 -kbd
 -usermode
--dmraid
 -gzip
 -less
 -which
@@ -110,3 +110,8 @@ febootstrap-supermin-helper
 rpm-python
 # for efi installs
 efibootmgr
+# libvirt-cim
+sblim-sfcb
+libvirt-cim
+# keyboard layout
+system-config-keyboard-base

@@ -2,12 +2,14 @@
 %global product_release %{version} (0)
 %global mgmt_scripts_dir %{_sysconfdir}/node.d
 %{!?python_sitelib: %global python_sitelib %(%{__python} -c "from distutils.sysconfig import get_python_lib; print get_python_lib()")}
+%define is_f16 %(test "0%{?fedora}" == "016" && echo 1 || echo 0)
+
 
 
 Summary:        The %{product_family} daemons/scripts
 Name:           ovirt-node
 Version:        @VERSION@
-Release:        0%{?BUILD_NUMBER}%{?dist}%{?extra_release}
+Release:        999%{?BUILD_NUMBER}%{?extra_release}%{?dist}
 Source0:        %{name}-%{version}.tar.gz
 License:        GPLv2+
 Group:          Applications/System
@@ -16,12 +18,16 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-buildroot
 URL:            http://www.ovirt.org/
 BuildRequires:  python-setuptools
 BuildRequires:  automake autoconf
+%if 0%{?fedora}
+BuildRequires:  systemd-units
+%endif
 
 Requires(post):  /sbin/chkconfig
 Requires(preun): /sbin/chkconfig
 %if 0%{?fedora}
-BuildRequires:  systemd-units
 Requires:       systemd-units
+Requires(post):     systemd-units
+Requires(preun):    systemd-units
 #Requires:       python-augeas
 Requires:       glusterfs-client >= 2.0.1
 Requires:       anyterm
@@ -69,19 +75,34 @@ BuildArch:      noarch
 %description
 Provides a series of daemons and support utilities for hypervisor distribution.
 
-%package tools
-Summary:        Tools for building and running %{product_family} image
+%package recipe
+Summary:        Recipes for building and running %{product_family} image
 Group:          Applications/System
 Requires:       pykickstart  >= 1.54
+Requires:       livecd-tools >= 020-2
+Obsoletes:      ovirt-node-tools <= 2.3.0-999
+
+%define recipe_root %{_datadir}/ovirt-node-recipe
+
+%description recipe
+This package provides recipe (Kickstart files), client tools,
+documentation for building and running an %{product_family} image.
+This package is not to be installed on the %{product_family},
+however on a development machine to help to build the image.
+
+%package tools
+Summary:        Recipes for building and running %{product_family} image
+Group:          Applications/System
 Requires:       livecd-tools >= 020-2
 
 %define tools_root %{_datadir}/ovirt-node-tools
 
 %description tools
-This package provides recipe (Kickstart files), client tools,
-documentation for building and running an %{product_family} image.
+This package provides plugin tools for modifying and working with the
+%{product_family} image.
 This package is not to be installed on the %{product_family},
-however on a development machine to help to build the image.
+however on a development machine to work with the image.
+
 
 %prep
 %setup -q
@@ -96,7 +117,6 @@ make
 make install DESTDIR=%{buildroot}
 
 # FIXME move all installs into makefile
-%{__install} -d -m0755 %{buildroot}%{_initrddir}
 %{__install} -d -m0755 %{buildroot}%{_sysconfdir}
 %{__install} -d -m0755 %{buildroot}%{_sysconfdir}/cron.hourly
 %{__install} -d -m0755 %{buildroot}%{_sysconfdir}/sysconfig
@@ -107,17 +127,34 @@ make install DESTDIR=%{buildroot}
 
 %{__install} -p -m0755 scripts/node-config %{buildroot}%{_sysconfdir}/sysconfig
 
-%{__install} -p -m0755 scripts/ovirt-awake %{buildroot}%{_initrddir}
-%{__install} -p -m0755 scripts/ovirt-early %{buildroot}%{_initrddir}
-%{__install} -p -m0755 scripts/ovirt %{buildroot}%{_initrddir}
-%{__install} -p -m0755 scripts/ovirt-post %{buildroot}%{_initrddir}
-%{__install} -p -m0755 scripts/ovirt-firstboot %{buildroot}%{_initrddir}
+
+# Init stuff
+%{__install} -p -m0755 scripts/ovirt-init-functions.sh %{buildroot}%{_libexecdir}/ovirt-init-functions.sh
+
+%if 0%{?fedora}
+# Provide systemd service files
+%{__install} -d -m0755 %{buildroot}%{_unitdir}
+%{__install} -p -m0755 scripts/ovirt-awake.service %{buildroot}%{_unitdir}/ovirt-awake.service
+%{__install} -p -m0755 scripts/ovirt-early.service %{buildroot}%{_unitdir}/ovirt-early.service
+%{__install} -p -m0755 scripts/ovirt.service %{buildroot}%{_unitdir}/ovirt.service
+%{__install} -p -m0755 scripts/ovirt-post.service %{buildroot}%{_unitdir}/ovirt-post.service
+%{__install} -p -m0755 scripts/ovirt-firstboot.service %{buildroot}%{_unitdir}/ovirt-firstboot.service
+%{__install} -p -m0755 scripts/ovirt-cim.service %{buildroot}%{_unitdir}/ovirt-cim.service
+%else
+# Provide sysV scripts
+%{__install} -d -m0755 %{buildroot}%{_initrddir}
+%{__install} -p -m0755 scripts/ovirt-awake.init %{buildroot}%{_initrddir}/ovirt-awake
+%{__install} -p -m0755 scripts/ovirt-early.init %{buildroot}%{_initrddir}/ovirt-early
+%{__install} -p -m0755 scripts/ovirt.init %{buildroot}%{_initrddir}/ovirt
+%{__install} -p -m0755 scripts/ovirt-post.init %{buildroot}%{_initrddir}/ovirt-post
+%{__install} -p -m0755 scripts/ovirt-firstboot.init %{buildroot}%{_initrddir}/ovirt-firstboot
+%{__install} -p -m0755 scripts/ovirt-cim.init %{buildroot}%{_initrddir}/ovirt-cim
+%endif
 
 %{__install} -p -m0644 logrotate/ovirt-logrotate %{buildroot}%{_sysconfdir}/cron.d
 %{__install} -p -m0644 logrotate/ovirt-logrotate.conf %{buildroot}%{_sysconfdir}/logrotate.d/ovirt-node
-%if 0%{?fedora}
+%if %is_f16
 # install libvirtd systemd service
-%{__install} -d -m0755 %{buildroot}%{_unitdir}
 %{__install} -p -m0644 libvirtd.service %{buildroot}%{_unitdir}
 %endif
 %if 0%{?rhel}
@@ -167,6 +204,7 @@ echo "# File where default configuration is kept" > %{buildroot}/%{_sysconfdir}/
 %if 0%{?rhel} && ! 0%{?centos}
 %{__install} -p -m0644 scripts/rhn.py %{buildroot}%{python_sitelib}/ovirt_config_setup
 %endif
+%{__install} -p -m0644 scripts/cim.py %{buildroot}%{python_sitelib}/ovirt_config_setup
 %{__install} -d -m0755 %{buildroot}%{python_sitelib}/ovirtnode
 %{__install} -p -m0644 scripts/__init__.py %{buildroot}%{python_sitelib}/ovirtnode
 %{__install} -p -m0644 scripts/storage.py %{buildroot}%{python_sitelib}/ovirtnode
@@ -192,17 +230,27 @@ echo "# File where default configuration is kept" > %{buildroot}/%{_sysconfdir}/
 
 # ovirt-early vendor commandline variables
 %{__install} -d -m0755 %{buildroot}%{_sysconfdir}/ovirt-commandline.d
+# edit-node
+%{__install} -p -m0755 tools/edit-node %{buildroot}%{_sbindir}/edit-node
 
 
 %clean
 %{__rm} -rf %{buildroot}
 
 %post
+%if 0%{?rhel}
 /sbin/chkconfig --add ovirt-awake
 /sbin/chkconfig --add ovirt-early
 /sbin/chkconfig --add ovirt-firstboot
 /sbin/chkconfig --add ovirt
 /sbin/chkconfig --add ovirt-post
+/sbin/chkconfig --add ovirt-cim
+%else
+if [ $1 -eq 1 ] ; then
+    # Initial installation
+    /bin/systemctl daemon-reload >/dev/null 2>&1 || :
+fi
+%endif
 # workaround for imgcreate/live.py __copy_efi_files
 if [ ! -e /boot/grub/splash.xpm.gz ]; then
   cp %{app_root}/grub-splash.xpm.gz /boot/grub/splash.xpm.gz
@@ -227,25 +275,45 @@ rm -f /etc/system-release
 echo "%{product_family} release %{product_release}" > /etc/system-release
 
 %preun
+%if 0%{?rhel}
 if [ $1 = 0 ] ; then
     /sbin/service ovirt-early stop >/dev/null 2>&1
-    /sbin/service ovirt-firstboor stop >/dev/null 2>&1
+    /sbin/service ovirt-firstboot stop >/dev/null 2>&1
     /sbin/service ovirt stop >/dev/null 2>&1
     /sbin/service ovirt-post stop >/dev/null 2>&1
+    /sbin/service ovirt-cim stop >/dev/null 2>&1
     /sbin/chkconfig --del ovirt-awake
     /sbin/chkconfig --del ovirt-early
     /sbin/chkconfig --del ovirt-firstboot
     /sbin/chkconfig --del ovirt
     /sbin/chkconfig --del ovirt-post
+    /sbin/chkconfig --del ovirt-cim
 fi
+%else
+if [ $1 -eq 0 ] ; then
+    # Package removal, not upgrade
+    /bin/systemctl --no-reload disable ovirt-firstboot.service > /dev/null 2>&1 || :
+    /bin/systemctl --no-reload disable ovirt.service > /dev/null 2>&1 || :
+    /bin/systemctl --no-reload disable ovirt-post.service > /dev/null 2>&1 || :
+    /bin/systemctl --no-reload disable ovirt-early.service > /dev/null 2>&1 || :
+    /bin/systemctl --no-reload disable ovirt-cim.service > /dev/null 2>&1 || :
 
+    /bin/systemctl stop ovirt.service > /dev/null
+    /bin/systemctl stop ovirt-post.service > /dev/null
+    /bin/systemctl stop ovirt-early.service > /dev/null
+    /bin/systemctl stop ovirt-cim.service > /dev/null
+fi
+%endif
 
-%files tools
+%files recipe
 %defattr(0644,root,root,0755)
 %doc README COPYING
-%{tools_root}/*.ks
+%{recipe_root}/*.ks
 %defattr(0755,root,root,0755)
 %{_sbindir}/node-creator
+
+%files tools
+%{_sbindir}/edit-node
 
 
 %files
@@ -259,7 +327,7 @@ fi
 %{_sysconfdir}/ovirt-config-boot.d
 %config(noreplace) %{_sysconfdir}/sysconfig/node-config
 
-%if 0%{?fedora}
+%if %is_f16
 %{_unitdir}/libvirtd.service
 %endif
 %if 0%{?rhel}
@@ -293,7 +361,6 @@ fi
 %{_libexecdir}/ovirt-config-networking
 %{_libexecdir}/ovirt-config-password
 %{_libexecdir}/ovirt-config-rhn
-%{_libexecdir}/ovirt-config-snmp
 %{_libexecdir}/ovirt-config-storage
 %{_libexecdir}/ovirt-config-uninstall
 %{_libexecdir}/ovirt-config-view-logs
@@ -304,19 +371,29 @@ fi
 %{_libexecdir}/ovirt-config-installer
 %{_libexecdir}/ovirt-config-setup
 %{_libexecdir}/ovirt-admin-shell
+%{_libexecdir}/ovirt-init-functions.sh
 %{_sbindir}/persist
 %{_sbindir}/unpersist
 %{python_sitelib}/ovirt_config_setup
 %{python_sitelib}/ovirtnode
 %{python_sitelib}/augeas*
-
+%{_sysconfdir}/ovirt-early.d
+%{_sysconfdir}/ovirt-commandline.d
+%if 0%{?fedora}
+%{_unitdir}/ovirt.service
+%{_unitdir}/ovirt-awake.service
+%{_unitdir}/ovirt-firstboot.service
+%{_unitdir}/ovirt-post.service
+%{_unitdir}/ovirt-early.service
+%{_unitdir}/ovirt-cim.service
+%else
 %{_initrddir}/ovirt-awake
 %{_initrddir}/ovirt-early
 %{_initrddir}/ovirt-firstboot
 %{_initrddir}/ovirt
 %{_initrddir}/ovirt-post
-%{_sysconfdir}/ovirt-early.d
-%{_sysconfdir}/ovirt-commandline.d
+%{_initrddir}/ovirt-cim
+%endif
 
 %changelog
 * Mon Jun 20 2011 Alan Pevec <apevec@redhat.com> 2.0.0-1

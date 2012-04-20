@@ -22,7 +22,8 @@ SUBDIRS =   \
   images \
   kinit \
   recipe \
-  scripts
+  scripts \
+  tools
 
 EXTRA_DIST = \
   ovirt-qla4xxx.conf \
@@ -39,7 +40,7 @@ DISTCLEANFILES = $(PACKAGE)-$(VERSION).tar.gz
 # For Release: 0..., set _ovirt_dev=1 so that we get extra_release.GIT-
 # annotated rpm version strings.
 _ovirt_dev = \
- $(shell grep -q '^[[:space:]]*Release:[[:space:]]*0' \
+ $(shell grep -q '^[[:space:]]*Release:[[:space:]]*999' \
    $(srcdir)/*.spec.in && echo 1 || :)
 
 git_head	= $$(git log -1 --pretty=format:%h)
@@ -59,5 +60,9 @@ publish: rpms
 	rsync -aq $(shell rpm --eval '%{_rpmdir}')/ $(OVIRT_CACHE_DIR)/ovirt/
 	rsync -aq $(shell rpm --eval '%{_srcrpmdir}')/ $(OVIRT_CACHE_DIR)/ovirt/src
 	createrepo $(OVIRT_CACHE_DIR)/ovirt
+
+iso: publish
+	cd recipe
+	make node
 
 .PHONY: rpms publish srpms

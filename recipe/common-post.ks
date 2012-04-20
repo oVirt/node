@@ -66,6 +66,11 @@ mkdir -p /var/cache/multipathd
 touch /var/lib/random-seed
 echo "/dev/HostVG/Config /config ext4 defaults,noauto,noatime 0 0" >> /etc/fstab
 
+# Create wwids file to prevent an error on boot, rhbz #805570
+mkdir -p /etc/multipath
+touch /etc/multipath/wwids
+chmod 0600 /etc/multipath/wwids
+
 # prepare for STATE_MOUNT in rc.sysinit
 augtool << \EOF_readonly-root
 set /files/etc/sysconfig/readonly-root/STATE_LABEL CONFIG
@@ -196,7 +201,7 @@ sed -i "s/defaults,noatime/defaults,ro,noatime/g" /etc/fstab
 echo "StrictHostKeyChecking no" >> /etc/ssh/ssh_config
 
 #mount kernel debugfs
-echo "debugfs /sys/kernel/debug debugfs 0 0" >> /etc/fstab
+echo "debugfs /sys/kernel/debug debugfs auto 0 0" >> /etc/fstab
 
 # create .virt-manager directories for readonly root
 mkdir -p /root/.virt-manager /home/admin/.virt-manager
@@ -224,5 +229,9 @@ EOF_sshd_config
 #rhbz#772319
 echo "options bnx2x disable_tpa=1" > /etc/modprobe.d/bnx2x.conf
 echo "options mlx4_en num_lro=0" > /etc/modprobe.d/mlx4_en.conf
-echo "options enic lro_disable=1" > /etc/modprobe.d/enic.conf
 echo "options s2io lro=0" > /etc/modprobe.d/s2io.conf
+
+#CIM related changes
+# set read-only
+echo "readonly = true;" > /etc/libvirt-cim.conf
+useradd -G sfcb cim

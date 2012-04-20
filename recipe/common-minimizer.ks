@@ -1,9 +1,9 @@
 droprpm system-config-*
+keeprpm system-config-keyboard-base
 droprpm libsemanage-python
 
 droprpm mkinitrd
 droprpm isomd5sum
-droprpm dmraid
 droprpm checkpolicy
 droprpm make
 droprpm setools-libs-python
@@ -321,3 +321,41 @@ drop /sbin/ebtables-restore
 
 # remove bogus kdump script (rpmdiff complains)
 drop /etc/kdump-adv-conf
+
+#cim
+droprpm tog-pegasus
+droprpm tog-pegasus-libs
+droprpm mailcap
+droprpm openslp
+
+#remove rpms added by dmraid
+droprpm ConsoleKit
+droprpm checkpolicy
+droprpm dmraid
+droprpm dmraid-events
+droprpm gamin
+droprpm gnupg2
+droprpm hdparm
+droprpm isomd5sum
+droprpm kbd
+droprpm libicu
+droprpm libsemanage-python
+droprpm linux-atm-libs
+droprpm make
+droprpm mtools
+droprpm mysql-libs
+droprpm perl
+droprpm perl-Module-Pluggable
+droprpm perl-Net-Telnet
+droprpm perl-PathTools
+droprpm perl-Pod-Escapes
+droprpm perl-Pod-Simple
+droprpm perl-Scalar-List-Utils
+droprpm perl-hivex
+droprpm perl-macros
+droprpm setools-libs
+droprpm setools-libs-python
+droprpm sgpio
+droprpm syslinux
+droprpm system-config-firewall-base
+droprpm usermode

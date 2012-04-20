@@ -42,6 +42,7 @@ CONTINUE_BUTTON = "Continue"
 SHELL_BUTTON = "Drop To Shell"
 
 WELCOME_PAGE = 1
+KEYBOARD_PAGE = 2
 ROOT_STORAGE_PAGE = 3
 OTHER_DEVICE_ROOT_PAGE = 4
 HOSTVG_STORAGE_PAGE = 5
@@ -59,13 +60,28 @@ def pam_conv(auth, query_list):
         resp.append((current_password, 0))
     return resp
 
+def tui_check_fakeraid(device, screen):
+    if not is_wipe_fakeraid():
+        if has_fakeraid(device):
+            msg = "The device(s) you have selected contains fakeraid metadata.  Installation cannot proceed with this metadata on the disk.  Is it OK to remove the metadata?"
+            warn = ButtonChoiceWindow(screen, "Fakeraid Metadata Detected", msg, buttons = ['Ok', 'Cancel'])
+            if warn == "ok":
+                set_wipe_fakeraid(1)
+                return True
+            else:
+                return False
+        else:
+            return True
+    else:
+        return True
+
 class NodeInstallScreen:
     def __init__(self, colorset = None):
         self.__current_page = 1
         self.__finished = False
         self.ovirt_defaults_file = "/etc/default/ovirt"
         OVIRT_VARS = parse_defaults()
-        _colorset = {
+        _console_colorset = {
                         "ROOT"          : ("gray",  "magenta"),
                         "BORDER"        : ("magenta", "magenta"),
                         "WINDOW"        : ("magenta", "magenta"),
@@ -86,7 +102,26 @@ class NodeInstallScreen:
                         "CHECKBOX"      : ("black",  "red"),
                         "ROOTTEXT"      : ("white",  "blue"),
                          }
-        self.__colorset = _colorset
+        _alternate_colorset = {
+                        "ROOT"          : ("white",  "white"),
+                        "HELPLINE"      : ("white",  "white"),
+                        "SHADOW"        : ("white",  "white"),
+                        "BORDER"        : ("white", "white"),
+                        "ACTBUTTON"     : ("white",  "blue"),
+                        "BUTTON"        : ("blue",  "white"),
+                        "TITLE"         : ("white",  "blue"),
+                        "EMPTYSCALE"    : ("white",  "cyan"),
+                        "FULLSCALE"     : ("black",  "white"),
+                        "CHECKBOX"      : ("black",  "gray"),
+                        "ROOTTEXT"      : ("white",  "blue"),
+                        "ACTSELLISTBOX" : ("white",  "black"),
+                        "LABEL"         : ("black",  "white"),
+                         }
+
+        if is_console():
+            self.__colorset = _console_colorset
+        else:
+            self.__colorset = _alternate_colorset
         self.dev_name = ""
         self.dev_model = ""
         self.dev_bus = ""
@@ -273,8 +308,10 @@ class NodeInstallScreen:
                 self.menuo = 1
 
     def get_back_page(self):
-        if self.__current_page == ROOT_STORAGE_PAGE:
+        if self.__current_page == KEYBOARD_PAGE:
             self.__current_page = WELCOME_PAGE
+        elif self.__current_page == ROOT_STORAGE_PAGE:
+            self.__current_page = KEYBOARD_PAGE
         elif self.__current_page == OTHER_DEVICE_ROOT_PAGE:
             self.__current_page = ROOT_STORAGE_PAGE
         elif self.__current_page == OTHER_DEVICE_HOSTVG_PAGE:
@@ -320,6 +357,9 @@ class NodeInstallScreen:
         hwvirt_msg =  get_virt_hw_status()
         self.hwvirt = Textbox(50, 2, hwvirt_msg, wrap = 1)
         elements.setField(self.hwvirt, 1, 2, anchorLeft = 1, padding=(0,0,0,0))
+        if is_efi_boot():
+            efi_text="INFO: Machine is booted in EFI mode"
+            elements.setField(Label(efi_text), 1, 3, anchorLeft = 1, padding=(0,1,0,0))
         return [Label(""), elements]
 
     def finish_install_page(self):
@@ -335,7 +375,7 @@ class NodeInstallScreen:
         elements = Grid(2, 5)
         elements.setField(Label("%s Installation Failed " %
             PRODUCT_SHORT), 0, 0)
-        elements.setField(Label(" View Log Files "), 0, 1, anchorLeft = 1, padding = (0,1,0,0))
+        elements.setField(Label(" View Log Files "), 0, 1, anchorLeft = 1, padding = (0,1,0,1))
         self.log_menu_list = Listbox(3, width = 30, returnExit = 1, border = 0, showCursor = 0, scroll = 0)
         if os.path.exists("/var/log/ovirt.log"):
             self.log_menu_list.append(" /var/log/ovirt.log", "/var/log/ovirt.log")
@@ -344,6 +384,42 @@ class NodeInstallScreen:
         self.log_menu_list.append(" /var/log/messages", "/var/log/messages")
         elements.setField(self.log_menu_list, 0, 2, anchorLeft = 1, padding = (0,0,0,12))
         return [Label(""), elements]
+
+    def keyboard_page(self):
+        # placeholder for system-config-keyboard-base, will remove move later
+        try:
+            import system_config_keyboard.keyboard as keyboard
+        except:
+            return [Label(""), elements]
+
+        elements = Grid(2, 9)
+        heading = Label("Keyboard Layout Selection")
+        if is_console():
+            heading.setColors(customColorset(1))
+        self.kbd = keyboard.Keyboard()
+        self.kbd.read()
+        self.kbdDict = self.kbd.modelDict
+        self.kbdKeys = self.kbdDict.keys()
+        self.kbdKeys.sort()
+        self.kb_list = Listbox(10, scroll = 1, returnExit = 1)
+        default = ""
+        for kbd in self.kbdKeys:
+            if kbd == self.kbd.get():
+                default = kbd
+            plainName = self.kbdDict[kbd][0]
+            self.kb_list.append(plainName, kbd)
+        try:
+            self.kb_list.setCurrent(default)
+        except:
+            pass
+        elements.setField(heading, 0, 0, anchorLeft = 1)
+        elements.setField(self.kb_list, 0, 1, anchorLeft = 1, padding=(1,1,0,3))
+        return [Label(""), elements]
+
+    def process_keyboard_config(self):
+       self.kbd.set(self.kb_list.current())
+       self.kbd.write()
+       self.kbd.activate()
 
     def disk_details_callback(self):
         if self.__current_page == ROOT_STORAGE_PAGE:
@@ -553,6 +629,8 @@ class NodeInstallScreen:
     def get_elements_for_page(self, screen, page):
         if page == WELCOME_PAGE:
             return self.install_page()
+        if page == KEYBOARD_PAGE:
+            return self.keyboard_page()
         if page == ROOT_STORAGE_PAGE:
             return self.root_disk_page()
         if page == OTHER_DEVICE_ROOT_PAGE:
@@ -715,6 +793,9 @@ class NodeInstallScreen:
                     self.get_back_page()
                 elif not result == "F2":
                     if self.__current_page == WELCOME_PAGE:
+                        self.__current_page = KEYBOARD_PAGE
+                    elif self.__current_page == KEYBOARD_PAGE:
+                        self.process_keyboard_config()
                         if menu_choice == 1:
                             self.__current_page = ROOT_STORAGE_PAGE
                         elif menu_choice == 3:
@@ -727,6 +808,8 @@ class NodeInstallScreen:
                                 ButtonChoiceWindow(self.screen, "Root Storage Selection", "You must enter a valid device", buttons = ['Ok'])
                                 self.__current_page = ROOT_STORAGE_PAGE
                             else:
+                                if not tui_check_fakeraid(self.storage_init, self.screen):
+                                    continue
                                 augtool("set", "/files/" + OVIRT_DEFAULTS + "/OVIRT_INIT", '"' + self.storage_init + '"')
                                 augtool("set", "/files/" + OVIRT_DEFAULTS + "/OVIRT_ROOT_INSTALL", '"y"')
                                 self.__current_page =  HOSTVG_STORAGE_PAGE
@@ -737,6 +820,8 @@ class NodeInstallScreen:
                         else:
                             if self.failed_block_dev == 0:
                                 self.storage_init = translate_multipath_device(self.root_device.value())
+                                if not tui_check_fakeraid(self.storage_init, self.screen):
+                                    continue
                                 augtool("set", "/files/" + OVIRT_DEFAULTS + "/OVIRT_INIT", '"' + self.storage_init + '"')
                                 augtool("set", "/files/" + OVIRT_DEFAULTS + "/OVIRT_ROOT_INSTALL", '"y"')
                                 self.__current_page = HOSTVG_STORAGE_PAGE
@@ -753,6 +838,8 @@ class NodeInstallScreen:
                             else:
                                 hostvg_list = ""
                                 for dev in self.hostvg_init:
+                                    if not tui_check_fakeraid(dev, self.screen):
+                                        continue
                                     hostvg_list += dev + ","
                                 augtool("set", "/files/" + OVIRT_DEFAULTS + "/OVIRT_INIT", '"' + self.storage_init + "," + hostvg_list + '"')
                                 self.__current_page = PASSWORD_PAGE
@@ -772,6 +859,8 @@ class NodeInstallScreen:
                             self.hostvg_init = translate_multipath_device(self.hostvg_device.value())
                             hostvg_list = ""
                             for dev in self.hostvg_init.split(","):
+                                if not tui_check_fakeraid(dev, self.screen):
+                                    continue
                                 hostvg_list += dev + ","
                             augtool("set", "/files/" + OVIRT_DEFAULTS + "/OVIRT_INIT", '"' + self.storage_init + "," + hostvg_list + '"')
                             self.__current_page = PASSWORD_PAGE
